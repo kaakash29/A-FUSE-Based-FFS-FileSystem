@@ -83,6 +83,7 @@ void* fs_init(struct fuse_conn_info *conn)
     if (disk->ops->read(disk, 0, 1, &sb) < 0)
         exit(1);
 
+    printf("\n DEBUG : fs_init function called ");fflush(stdout);
     /* your code here */
     
     if (homework_part > 3)
@@ -124,6 +125,9 @@ void* fs_init(struct fuse_conn_info *conn)
  */
 static int fs_getattr(const char *path, struct stat *sb)
 {
+	printf("\n DEBUG : fs_getattr function called ");fflush(stdout);fflush(stderr);
+	printf("\n DEBUG : path = %s", path);
+	
     return -EOPNOTSUPP;
 }
 
@@ -139,6 +143,7 @@ static int fs_getattr(const char *path, struct stat *sb)
 static int fs_readdir(const char *path, void *ptr, fuse_fill_dir_t filler,
 		       off_t offset, struct fuse_file_info *fi)
 {
+	printf("\n DEBUG : fs_readdir function called ");fflush(stdout);
     return -EOPNOTSUPP;
 }
 
@@ -147,11 +152,13 @@ static int fs_readdir(const char *path, void *ptr, fuse_fill_dir_t filler,
  */
 static int fs_opendir(const char *path, struct fuse_file_info *fi)
 {
+	printf("\n DEBUG : fs_opendir function called ");fflush(stdout);
     return 0;
 }
 
 static int fs_releasedir(const char *path, struct fuse_file_info *fi)
 {
+	printf("\n DEBUG : fs_released function called ");fflush(stdout);
     return 0;
 }
 
@@ -168,6 +175,7 @@ static int fs_releasedir(const char *path, struct fuse_file_info *fi)
  */
 static int fs_mknod(const char *path, mode_t mode, dev_t dev)
 {
+	printf("\n DEBUG : fs_mknod function called ");fflush(stdout);
     return -EOPNOTSUPP;
 }
 
@@ -181,6 +189,7 @@ static int fs_mknod(const char *path, mode_t mode, dev_t dev)
  */ 
 static int fs_mkdir(const char *path, mode_t mode)
 {
+	printf("\n DEBUG : fs_mkdir function called ");fflush(stdout);
     return -EOPNOTSUPP;
 }
 
@@ -193,6 +202,8 @@ static int fs_truncate(const char *path, off_t len)
     /* you can cheat by only implementing this for the case of len==0,
      * and an error otherwise.
      */
+    
+    printf("\n DEBUG : fs_truncate function called ");fflush(stdout);
     if (len != 0)
 	return -EINVAL;		/* invalid argument */
     return -EOPNOTSUPP;
@@ -204,6 +215,7 @@ static int fs_truncate(const char *path, off_t len)
  */
 static int fs_unlink(const char *path)
 {
+	printf("\n DEBUG : fs_unlink function called ");fflush(stdout);
     return -EOPNOTSUPP;
 }
 
@@ -212,6 +224,7 @@ static int fs_unlink(const char *path)
  */
 static int fs_rmdir(const char *path)
 {
+	printf("\n DEBUG : fs_rmdir function called ");fflush(stdout);
     return -EOPNOTSUPP;
 }
 
@@ -229,6 +242,7 @@ static int fs_rmdir(const char *path)
  */
 static int fs_rename(const char *src_path, const char *dst_path)
 {
+	printf("\n DEBUG : fs_rename function called ");fflush(stdout);
     return -EOPNOTSUPP;
 }
 
@@ -240,11 +254,13 @@ static int fs_rename(const char *src_path, const char *dst_path)
  */
 static int fs_chmod(const char *path, mode_t mode)
 {
+	printf("\n DEBUG : fs_chmod function called ");fflush(stdout);
     return -EOPNOTSUPP;
 }
 
 int fs_utime(const char *path, struct utimbuf *ut)
 {
+	printf("\n DEBUG : fs_utime function called ");fflush(stdout);
     return -EOPNOTSUPP;
 }
 
@@ -258,6 +274,7 @@ int fs_utime(const char *path, struct utimbuf *ut)
 static int fs_read(const char *path, char *buf, size_t len, off_t offset,
 		    struct fuse_file_info *fi)
 {
+	printf("\n DEBUG : fs_read function called ");fflush(stdout);
     return -EOPNOTSUPP;
 }
 
@@ -272,16 +289,21 @@ static int fs_read(const char *path, char *buf, size_t len, off_t offset,
 static int fs_write(const char *path, const char *buf, size_t len,
 		     off_t offset, struct fuse_file_info *fi)
 {
+	printf("\n DEBUG : fs_write function called ");fflush(stderr);fflush(stderr);
+	printf("\n DEBUG : fs_write function called path =  %s", path);fflush(stderr);fflush(stderr);
+	
     return -EOPNOTSUPP;
 }
 
 static int fs_open(const char *path, struct fuse_file_info *fi)
 {
+	printf("\n DEBUG : fs_open function called ");fflush(stdout);
     return 0;
 }
 
 static int fs_release(const char *path, struct fuse_file_info *fi)
 {
+	printf("\n DEBUG : fs_release function called ");fflush(stdout);
     return 0;
 }
 
@@ -301,6 +323,7 @@ static int fs_statfs(const char *path, struct statvfs *st)
      * this should work fine, but you may want to add code to
      * calculate the correct values later.
      */
+    printf("\n DEBUG : fs_statfs function called ");fflush(stdout);
     st->f_bsize = FS_BLOCK_SIZE;
     st->f_blocks = 0;           /* probably want to */
     st->f_bfree = 0;            /* change these */
