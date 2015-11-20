@@ -20,7 +20,7 @@
 #include "fs7600.h"
 #include "blkdev.h"
 
-
+#define SUCCESS 0
 extern int homework_part;       /* set by '-part n' command-line option */
 
 /* 
@@ -72,8 +72,8 @@ fd_set *block_map;
 
 struct fs7600_inode *inodes;
 
-struct fs7600_inode get_inode_from_inum(int inode_number) {
-	return inodes[inode_number];
+struct fs7600_inode* get_inode_from_inum(int inode_number) {
+	return &inodes[inode_number];
 }
 
 int get_block_number_from_inum(int inode_number) {
@@ -82,6 +82,10 @@ int get_block_number_from_inum(int inode_number) {
 
 int get_bl_inode_number_from_inum(int inode_number) {
 	return inode_number % INODES_PER_BLK;
+}
+
+static int fs_translate_path_to_inum(const char* path) {
+	return SUCCESS;
 }
 
 /* init - this is called once by the FUSE framework at startup. Ignore
@@ -176,10 +180,26 @@ void* fs_init(struct fuse_conn_info *conn)
  */
 static int fs_getattr(const char *path, struct stat *sb)
 {
+	int inode_number;
+	struct fs7600_inode* inode;
 	printf("\n DEBUG : fs_getattr function called ");fflush(stdout);fflush(stderr);
 	printf("\n DEBUG : path = %s", path);
-	
-    return -EOPNOTSUPP;
+	/* translate the path to the inode_number, if possible */
+	inode_number = fs_translate_path_to_inum(path);
+	/* if path translation returned an error, then return the error */
+	if ((inode_number == -ENOENT) || (inode_number == -ENOTDIR))
+		return inode_number;
+	/* get the inode from the inode number */
+	inode = get_inode_from_inum(inode_number);
+	/* initialize all the entries of sb to 0 */
+	memset(sb, 0, sizeof(sb));
+	sb->st_uid = inode->uid;
+	sb->st_gid = inode->gid;
+	sb->st_mode = inode->mode;
+	sb->st_ctime = inode->ctime;
+	sb->st_mtime = inode->mtime;
+	sb->st_size = inode->size;
+    return SUCCESS;
 }
 
 /* readdir - get directory contents.
@@ -194,7 +214,14 @@ static int fs_getattr(const char *path, struct stat *sb)
 static int fs_readdir(const char *path, void *ptr, fuse_fill_dir_t filler,
 		       off_t offset, struct fuse_file_info *fi)
 {
-	//printf("\n DEBUG : fs_readdir function called ");fflush(stdout);
+	int inode_number;
+	printf("\n DEBUG : fs_readdir function called ");fflush(stdout);
+	/* translate the path to the inode_number, if possible */
+	inode_number = fs_translate_path_to_inum(path);
+	/* if path translation returned an error, then return the error */
+	if ((inode_number == -ENOENT) || (inode_number == -ENOTDIR))
+		return inode_number;
+	
     return -EOPNOTSUPP;
 }
 
