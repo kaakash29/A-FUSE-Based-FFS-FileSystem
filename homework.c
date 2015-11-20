@@ -91,6 +91,19 @@ static int fs_translate_path_to_inum(const char* path, int* type) {
 	return SUCCESS;
 }
 
+int get_dir_entries_from_dir_inum(int inode_number, 
+									struct fs7600_dirent** entry_list) {
+	//struct fs7600_dirent entry_list[32];
+    struct fs7600_inode *inode = NULL;
+    int dir_block_num;
+    /* get the inode from the inode number */
+    inode = get_inode_from_inum(inode_number);
+	/* read the first block which is the only block for directory inode */
+    if (disk->ops->read(disk, inode->direct[0], 1, &entry_list) < 0)
+        exit(1);
+    //return &entry_list[0];
+}
+
 
 /* init - this is called once by the FUSE framework at startup. Ignore
  * the 'conn' argument.
@@ -227,6 +240,9 @@ static int fs_readdir(const char *path, void *ptr, fuse_fill_dir_t filler,
 	/* if path translation returned an error, then return the error */
 	if ((inode_number == -ENOENT) || (inode_number == -ENOTDIR))
 		return inode_number;
+	/* If the path given is not for a directory, return error */
+	if (type != IS_DIR) 
+		return -ENOTDIR;
 	
     return -EOPNOTSUPP;
 }
