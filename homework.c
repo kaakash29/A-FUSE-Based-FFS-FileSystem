@@ -113,24 +113,23 @@ static int fs_translate_path_to_inum(const char* path, int* type) {
 	curr_dir = strtok(working_path, "/");
 	
 	if (curr_dir == NULL)
-					return 1;	
-					
-					
+		return 1;				
 	parent_dir_inode = 1;
-	
 	while(curr_dir != NULL) {
 		// read the listing of files from the parent directory
+		//memset(&entry_list, 0, sizeof(entry_list));
 		get_dir_entries_from_dir_inum(parent_dir_inode, &entry_list);
-		
+		//printf("\nChecking for name %s\n", curr_dir);
 		// Check if the curr_file is present in parent directory
-		for (i = 0; i< 32; i++) 
-		{
-			if (strcmp(curr_dir, entry_list[i].name) == 0) {
-					printf("\n File present in Directory ... ");
-					ftype = entry_list[i].isDir;
-					inode = entry_list[i].inode;
-					found = 1;
-					break;
+		for (i = 0; i < 32; i++) {
+			//printf("\n%d. ENTRY FOUND = %s\n", i, entry_list[i].name);
+			if ((entry_list[i].valid == 1) &&
+			 (strcmp(curr_dir, entry_list[i].name) == 0)) {
+				printf("\n File present in Directory ... ");
+				ftype = entry_list[i].isDir;
+				inode = entry_list[i].inode;
+				found = 1;
+				break;
 			}
 		}
 		
