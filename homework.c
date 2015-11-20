@@ -21,6 +21,9 @@
 #include "blkdev.h"
 
 #define SUCCESS 0
+#define IS_DIR 0
+#define IS_FILE 1
+
 extern int homework_part;       /* set by '-part n' command-line option */
 
 /* 
@@ -84,9 +87,10 @@ int get_bl_inode_number_from_inum(int inode_number) {
 	return inode_number % INODES_PER_BLK;
 }
 
-static int fs_translate_path_to_inum(const char* path) {
+static int fs_translate_path_to_inum(const char* path, int* type) {
 	return SUCCESS;
 }
+
 
 /* init - this is called once by the FUSE framework at startup. Ignore
  * the 'conn' argument.
@@ -182,10 +186,11 @@ static int fs_getattr(const char *path, struct stat *sb)
 {
 	int inode_number;
 	struct fs7600_inode* inode;
+	int type;
 	printf("\n DEBUG : fs_getattr function called ");fflush(stdout);fflush(stderr);
 	printf("\n DEBUG : path = %s", path);
 	/* translate the path to the inode_number, if possible */
-	inode_number = fs_translate_path_to_inum(path);
+	inode_number = fs_translate_path_to_inum(path, &type);
 	/* if path translation returned an error, then return the error */
 	if ((inode_number == -ENOENT) || (inode_number == -ENOTDIR))
 		return inode_number;
@@ -215,9 +220,10 @@ static int fs_readdir(const char *path, void *ptr, fuse_fill_dir_t filler,
 		       off_t offset, struct fuse_file_info *fi)
 {
 	int inode_number;
+	int type;
 	printf("\n DEBUG : fs_readdir function called ");fflush(stdout);
 	/* translate the path to the inode_number, if possible */
-	inode_number = fs_translate_path_to_inum(path);
+	inode_number = fs_translate_path_to_inum(path, &type);
 	/* if path translation returned an error, then return the error */
 	if ((inode_number == -ENOENT) || (inode_number == -ENOTDIR))
 		return inode_number;
