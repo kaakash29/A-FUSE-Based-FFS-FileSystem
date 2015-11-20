@@ -88,7 +88,84 @@ int get_bl_inode_number_from_inum(int inode_number) {
 }
 
 static int fs_translate_path_to_inum(const char* path, int* type) {
-	return SUCCESS;
+	char *curr_dir = NULL;
+	char *parent_dir = NULL;
+	char *working_path = NULL;
+	struct fs7600_dirent entry_list[32];
+	struct fs7600_inode *root_inode = NULL;
+	int i, dir_block_num, parent_dir_inode,inode ;
+	int found = 0;
+	int ftype;
+	char* forward_path = NULL;
+	
+	if (path == NULL){
+		printf("\nDEBUG : Received a null path ... ");
+		return -EOPNOTSUPP;
+	}
+
+	printf ("\n DEBUG : Translation Path = %s", path);
+	// Assume that the path starts from the root. Thus the entry 
+	// should be present in the root inode's block
+	// the root is a directory verify if the current file is 
+	// present in directory.
+	
+	working_path = strdup(path);
+	curr_dir = strtok(working_path, "/");
+	
+	if (curr_dir == NULL)
+					return 1;	
+					
+					
+	parent_dir_inode = 1;
+	
+	while(curr_dir != NULL) {
+		// read the listing of files from the parent directory
+		get_dir_entries_from_dir_inum(parent_dir_inode, &entry_list);
+		
+		// Check if the curr_file is present in parent directory
+		for (i = 0; i< 32; i++) 
+		{
+			if (strcmp(curr_dir, entry_list[i].name) == 0) {
+					printf("\n File present in Directory ... ");
+					ftype = entry_list[i].isDir;
+					inode = entry_list[i].inode;
+					found = 1;
+					break;
+			}
+		}
+		
+		if (!found) {
+			// File not found in direcotry
+			return -ENOENT;
+		}
+			
+		forward_path = strtok(0, "/"); 
+		printf("Forwward Path = %s",forward_path);
+		
+		if (forward_path != NULL)
+		{
+			// if the forward_path is not null means there is more path after this
+			// entry. Check if we shud throw the FILE_IN_PATH error?
+			if (ftype == 0) {
+				// if type is zero signifies that the entry is a file since 
+				// there are more entries in the path this condition is an error. 
+				return -ENOTDIR;
+			}
+			else
+			{
+				// id type is one this means that this entry is a directory 
+				// and we should continue path traversals 
+				parent_dir_inode = inode;
+				strcpy(curr_dir, forward_path);
+			}
+		}
+		else 
+		{
+			// if the forward_path is null means there is no more path after this
+			// entry
+			return inode;
+		}
+	}
 }
 
 int get_dir_entries_from_dir_inum(int inode_number, 
@@ -99,7 +176,7 @@ int get_dir_entries_from_dir_inum(int inode_number,
     /* get the inode from the inode number */
     inode = get_inode_from_inum(inode_number);
 	/* read the first block which is the only block for directory inode */
-    if (disk->ops->read(disk, inode->direct[0], 1, &entry_list) < 0)
+    if (disk->ops->read(disk, inode->direct[0], 1, entry_list) < 0)
         exit(1);
     //return &entry_list[0];
     return SUCCESS;
@@ -206,8 +283,9 @@ static int fs_getattr(const char *path, struct stat *sb)
 	/* translate the path to the inode_number, if possible */
 	inode_number = fs_translate_path_to_inum(path, &type);
 	/* if path translation returned an error, then return the error */
-	if ((inode_number == -ENOENT) || (inode_number == -ENOTDIR))
-		return inode_number;
+	if ((inode_number == -ENOENT) || (inode_number == -ENOTDIR)) {
+		printf("\n DEBUG : Path translation returned an ERROR ***");
+		return inode_number; }
 	/* get the inode from the inode number */
 	inode = get_inode_from_inum(inode_number);
 	/* initialize all the entries of sb to 0 */
