@@ -92,7 +92,7 @@ static int fs_translate_path_to_inum(const char* path, int* type) {
 }
 
 int get_dir_entries_from_dir_inum(int inode_number, 
-									struct fs7600_dirent** entry_list) {
+									struct fs7600_dirent* entry_list) {
 	//struct fs7600_dirent entry_list[32];
     struct fs7600_inode *inode = NULL;
     int dir_block_num;
@@ -102,6 +102,7 @@ int get_dir_entries_from_dir_inum(int inode_number,
     if (disk->ops->read(disk, inode->direct[0], 1, &entry_list) < 0)
         exit(1);
     //return &entry_list[0];
+    return SUCCESS;
 }
 
 
@@ -233,7 +234,8 @@ static int fs_readdir(const char *path, void *ptr, fuse_fill_dir_t filler,
 		       off_t offset, struct fuse_file_info *fi)
 {
 	int inode_number;
-	int type;
+	int type, i;
+	struct fs7600_dirent entry_list[32];
 	printf("\n DEBUG : fs_readdir function called ");fflush(stdout);
 	/* translate the path to the inode_number, if possible */
 	inode_number = fs_translate_path_to_inum(path, &type);
@@ -243,7 +245,12 @@ static int fs_readdir(const char *path, void *ptr, fuse_fill_dir_t filler,
 	/* If the path given is not for a directory, return error */
 	if (type != IS_DIR) 
 		return -ENOTDIR;
-	
+	/* get the directory entries for this directory */
+	if (get_dir_entries_from_dir_inum(inode_number, entry_list) != SUCCESS)
+		return -EOPNOTSUPP;
+	for (i = 0; i < 32; i++) {
+		//filler(ptr, entry_list[i].name, fi, 0);
+	}
     return -EOPNOTSUPP;
 }
 
