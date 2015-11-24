@@ -21,8 +21,8 @@
 #include "blkdev.h"
 
 #define SUCCESS 0
-#define IS_DIR 0
-#define IS_FILE 1
+#define IS_DIR 1
+#define IS_FILE 0
 
 extern int homework_part;       /* set by '-part n' command-line option */
 
@@ -112,17 +112,19 @@ static int fs_translate_path_to_inum(const char* path, int* type) {
 	working_path = strdup(path);
 	curr_dir = strtok(working_path, "/");
 	
-	if (curr_dir == NULL)
-		return 1;				
+	if (curr_dir == NULL){
+		*type = 1;
+		return 1;
+	}	
+		
+					
 	parent_dir_inode = 1;
 	while(curr_dir != NULL) {
 		// read the listing of files from the parent directory
-		//memset(&entry_list, 0, sizeof(entry_list));
 		get_dir_entries_from_dir_inum(parent_dir_inode, &entry_list);
-		//printf("\nChecking for name %s\n", curr_dir);
+		printf("\nChecking for name %s\n", curr_dir);
 		// Check if the curr_file is present in parent directory
 		for (i = 0; i < 32; i++) {
-			//printf("\n%d. ENTRY FOUND = %s\n", i, entry_list[i].name);
 			if ((entry_list[i].valid == 1) &&
 			 (strcmp(curr_dir, entry_list[i].name) == 0)) {
 				printf("\n File present in Directory ... ");
@@ -133,7 +135,7 @@ static int fs_translate_path_to_inum(const char* path, int* type) {
 			}
 		}
 		
-		if (!found) {
+		if (found == 0) {
 			// File not found in direcotry
 			return -ENOENT;
 		}
@@ -162,6 +164,7 @@ static int fs_translate_path_to_inum(const char* path, int* type) {
 		{
 			// if the forward_path is null means there is no more path after this
 			// entry
+			*type = ftype; 
 			return inode;
 		}
 	}
@@ -313,9 +316,15 @@ static int fs_readdir(const char *path, void *ptr, fuse_fill_dir_t filler,
 	int inode_number;
 	int type, i;
 	struct fs7600_dirent entry_list[32];
+	struct stat sb;
 	printf("\n DEBUG : fs_readdir function called ");fflush(stdout);
+	printf("\n DEBUG : Trying to read path = %s",path); fflush(stdout);
+	
 	/* translate the path to the inode_number, if possible */
 	inode_number = fs_translate_path_to_inum(path, &type);
+	
+	printf("\n DEBUG : Path %s Translated to inode %d of type %s", path, inode_number, type == IS_DIR?"DIR":"FILE"); fflush(stdout);
+	
 	/* if path translation returned an error, then return the error */
 	if ((inode_number == -ENOENT) || (inode_number == -ENOTDIR))
 		return inode_number;
@@ -325,10 +334,11 @@ static int fs_readdir(const char *path, void *ptr, fuse_fill_dir_t filler,
 	/* get the directory entries for this directory */
 	if (get_dir_entries_from_dir_inum(inode_number, entry_list) != SUCCESS)
 		return -EOPNOTSUPP;
+	
 	for (i = 0; i < 32; i++) {
-		//filler(ptr, entry_list[i].name, fi, 0);
+		filler(ptr, entry_list[i].name, &sb, 0);
 	}
-    return -EOPNOTSUPP;
+    return 0;
 }
 
 /* see description of Part 2. In particular, you can save information 
