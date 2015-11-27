@@ -99,16 +99,17 @@ static int fs_translate_path_to_inum(const char* path, int* type) {
 	char* forward_path = NULL;
 	
 	if (path == NULL){
-		printf("\nDEBUG : Received a null path ... ");
-		return -EOPNOTSUPP;
+		//printf("\n DEBUG : Received a null path ... ");
+		return -ENOENT;
 	}
 
 	printf ("\n DEBUG : Translation Path = %s", path);
+	fflush(stdout);fflush(stderr);
+	
 	// Assume that the path starts from the root. Thus the entry 
 	// should be present in the root inode's block
 	// the root is a directory verify if the current file is 
 	// present in directory.
-	
 	working_path = strdup(path);
 	curr_dir = strtok(working_path, "/");
 	
@@ -117,17 +118,25 @@ static int fs_translate_path_to_inum(const char* path, int* type) {
 		return 1;
 	}	
 		
-					
+	//Set the inode of the parent directory to be 1 for the root.				
 	parent_dir_inode = 1;
+	
+	//traverse over the token in the path.
 	while(curr_dir != NULL) {
+		
 		// read the listing of files from the parent directory
 		get_dir_entries_from_dir_inum(parent_dir_inode, &entry_list);
-		printf("\nChecking for name %s\n", curr_dir);
+		
+		//printf("\n DEBUG : Checking for name %s\n", curr_dir);
 		// Check if the curr_file is present in parent directory
 		for (i = 0; i < 32; i++) {
+			
+			//printf("\n DEBUG : Current directory contains file %s with inode %d ",entry_list[i].name, entry_list[i].inode);
+			
 			if ((entry_list[i].valid == 1) &&
 			 (strcmp(curr_dir, entry_list[i].name) == 0)) {
-				printf("\n File present in Directory ... ");
+			
+				//printf("\n DEBUG : File present in Directory ... ");
 				ftype = entry_list[i].isDir;
 				inode = entry_list[i].inode;
 				found = 1;
@@ -141,7 +150,7 @@ static int fs_translate_path_to_inum(const char* path, int* type) {
 		}
 			
 		forward_path = strtok(0, "/"); 
-		printf("Forwward Path = %s",forward_path);
+		printf("\n DEBUG : Forward Path = %s",forward_path);
 		
 		if (forward_path != NULL)
 		{
@@ -150,6 +159,7 @@ static int fs_translate_path_to_inum(const char* path, int* type) {
 			if (ftype == 0) {
 				// if type is zero signifies that the entry is a file since 
 				// there are more entries in the path this condition is an error. 
+				*type = ftype; 
 				return -ENOTDIR;
 			}
 			else
@@ -175,12 +185,14 @@ int get_dir_entries_from_dir_inum(int inode_number,
 	//struct fs7600_dirent entry_list[32];
     struct fs7600_inode *inode = NULL;
     int dir_block_num;
+    
     /* get the inode from the inode number */
     inode = get_inode_from_inum(inode_number);
+	
 	/* read the first block which is the only block for directory inode */
     if (disk->ops->read(disk, inode->direct[0], 1, entry_list) < 0)
         exit(1);
-    //return &entry_list[0];
+    
     return SUCCESS;
 }
 
@@ -280,16 +292,24 @@ static int fs_getattr(const char *path, struct stat *sb)
 	int inode_number;
 	struct fs7600_inode* inode;
 	int type;
-	printf("\n DEBUG : fs_getattr function called ");fflush(stdout);fflush(stderr);
-	printf("\n DEBUG : path = %s", path);
+	printf("\n DEBUG : fs_getattr function called trying to get attributes for path = %s",path);
+	fflush(stdout);fflush(stderr);
+	
 	/* translate the path to the inode_number, if possible */
 	inode_number = fs_translate_path_to_inum(path, &type);
+	printf("\n DEBUG : Path translated to inode number = %d",inode_number);
+	fflush(stdout);fflush(stderr);
+	
 	/* if path translation returned an error, then return the error */
 	if ((inode_number == -ENOENT) || (inode_number == -ENOTDIR)) {
-		printf("\n DEBUG : Path translation returned an ERROR ***");
-		return inode_number; }
+		printf("\n DEBUG : *** Path translation returned an ERROR ***");
+		fflush(stdout);fflush(stderr);
+		return inode_number; 
+	}
+	
 	/* get the inode from the inode number */
 	inode = get_inode_from_inum(inode_number);
+	
 	/* initialize all the entries of sb to 0 */
 	memset(sb, 0, sizeof(sb));
 	sb->st_uid = inode->uid;
@@ -325,20 +345,27 @@ static int fs_readdir(const char *path, void *ptr, fuse_fill_dir_t filler,
 	
 	printf("\n DEBUG : Path %s Translated to inode %d of type %s", path, inode_number, type == IS_DIR?"DIR":"FILE"); fflush(stdout);
 	
-	/* if path translation returned an error, then return the error */
+	/* If path translation returned an error, then return the error */
 	if ((inode_number == -ENOENT) || (inode_number == -ENOTDIR))
 		return inode_number;
+		
 	/* If the path given is not for a directory, return error */
 	if (type != IS_DIR) 
 		return -ENOTDIR;
-	/* get the directory entries for this directory */
+		
+	/* If we have NOT errored out above then get the 
+	 * directory entries for this directory */
 	if (get_dir_entries_from_dir_inum(inode_number, entry_list) != SUCCESS)
 		return -EOPNOTSUPP;
-	
+		
+	/* Fill the stat buffer using the filler */
 	for (i = 0; i < 32; i++) {
-		filler(ptr, entry_list[i].name, &sb, 0);
+		
+		if ((entry_list[i].name != NULL) && (entry_list[i].valid == 1))
+			filler(ptr, entry_list[i].name, &sb, 0);
 	}
-    return 0;
+	
+    return SUCCESS;
 }
 
 /* see description of Part 2. In particular, you can save information 
@@ -458,6 +485,113 @@ int fs_utime(const char *path, struct utimbuf *ut)
     return -EOPNOTSUPP;
 }
 
+int read_Data_From_File_Inode(struct fs7600_inode *inode, int len, off_t offset, char* buf) 
+{
+		int filesize, startBlockInd, sizeInBlock01, numBlocks2Read, sizeOfReadList;
+		char* buffer = NULL;
+		int* readBlocksList = NULL;
+		int indir1blocks[256];
+		int i = 0;
+		int j = 0;
+		
+		printf("\n DEBUG : Reading Data Off the INODE \n ");
+		
+		filesize = inode->size;
+		startBlockInd = (int) (offset / FS_BLOCK_SIZE);
+		sizeInBlock01 = (offset % FS_BLOCK_SIZE);
+		sizeOfReadList = numBlocks2Read = (int)((len - sizeInBlock01)/FS_BLOCK_SIZE) + 1;
+		
+		// Allocate memory to dynamic buffer and blocks list
+		buffer = (char*)malloc((FS_BLOCK_SIZE * numBlocks2Read + 1) * sizeof(char));
+		
+		readBlocksList = (int*)malloc(numBlocks2Read * sizeof(int));
+		
+		j = 0;
+		i = startBlockInd;	//current index of reading from blocks
+		
+		strcpy(buffer, "");
+		
+		while(numBlocks2Read > 0){
+			
+			// 1. Direct Pointer area reading
+			if (i < 6) {
+				readBlocksList[j] = inode->direct[i];
+				numBlocks2Read = numBlocks2Read - 1;
+				j = j + 1;
+			}
+			
+			// 2. First indirection pointer reading
+			else if ((i > 6) && (i < 256)) {
+			
+				if (disk->ops->read(disk, inode->indir_1, 1, &indir1blocks) < 0)
+					exit(1);
+				
+				if(numBlocks2Read > 256) {
+					memcpy(readBlocksList + j, indir1blocks, 256 * sizeof(int));
+					numBlocks2Read = numBlocks2Read - 256;
+					i = i + 256;
+					j = j + 256;
+				} else {
+					memcpy(readBlocksList + j, indir1blocks, numBlocks2Read * sizeof(int));
+					i = i + numBlocks2Read;
+					j = j + numBlocks2Read;
+					numBlocks2Read = 0;
+				}
+			}
+			
+			// 3. Second level indirection pointer reading
+			else {
+				int tempBlocksList[256];
+				int tempBlocksList2[256];
+				
+				if (disk->ops->read(disk, inode->indir_2, 1, &tempBlocksList) < 0)
+					exit(1);
+				
+				for(i = 0; i < 256 ; i++)
+				{
+					if (disk->ops->read(disk, tempBlocksList[i], 1, &tempBlocksList2) < 0)
+						exit(1);
+				}
+				
+				if(numBlocks2Read > 256) {
+					memcpy(readBlocksList + j, tempBlocksList2, 256 * sizeof(int));
+					numBlocks2Read = numBlocks2Read - 256;
+					j = j + 256;
+					i = i + 256;
+				} else {
+					memcpy(readBlocksList + j, indir1blocks, numBlocks2Read * sizeof(int));
+					i = i + numBlocks2Read;
+					j = j + numBlocks2Read;
+					numBlocks2Read = 0;
+				}			
+			}
+	}
+	
+	// Filling the character buffer
+	for (i = 0; i < sizeOfReadList ; i++){
+		char tempbuf[1024];
+		if (disk->ops->read(disk, readBlocksList[i], 1, &tempbuf) < 0)
+				exit(1);
+				
+		strcat(buffer, tempbuf);
+	}			
+	
+	//printf("\n DEBUG : BUFFER = %s of length = %d",buffer,strlen(buffer));
+	
+	strncpy(buf, buffer + offset , (len - sizeInBlock01));
+	buf[(len - sizeInBlock01)] = '\0';
+	
+	//printf("\n DEBUG : BUF = %s of LENGTH = %d",buf, strlen(buf));
+	
+	free(readBlocksList);
+	free(buffer);
+	
+return SUCCESS;	
+}
+
+
+
+
 /* read - read data from an open file.
  * should return exactly the number of bytes requested, except:
  *   - if offset >= file len, return 0
@@ -468,8 +602,50 @@ int fs_utime(const char *path, struct utimbuf *ut)
 static int fs_read(const char *path, char *buf, size_t len, off_t offset,
 		    struct fuse_file_info *fi)
 {
-	//printf("\n DEBUG : fs_read function called ");fflush(stdout);
-    return -EOPNOTSUPP;
+	int type; // local variable to check the type of the input path
+	int inode_num; //local variable to hold the inoe number of the file
+	int file_size; //local variable to hold the size of a file on disk
+	struct fs7600_inode *inode = NULL;
+	
+	printf("\n DEBUG : fs_read function called ");fflush(stdout);
+	printf("\n DEBUG : Parameters for the READ --> PATH = %s REQ_LEN = %d OFFSET = %jd",path, len, (intmax_t)offset);
+	
+	inode_num = fs_translate_path_to_inum(path, &type);
+	
+	strcpy(buf, "");
+	
+	if (inode_num < 0) {
+		return inode_num;
+	}
+		
+	if (type == IS_DIR) {
+			//trying to read a directory 
+			return -EISDIR;
+	}
+		
+	inode = get_inode_from_inum(inode_num);
+	
+	file_size = inode->size;
+	
+	//printf("\n DEBUG : The size of the file is = %d",file_size);
+	
+	if (offset >= file_size ) {
+		return 0;
+	}
+	
+	else if (offset + len > file_size) {
+		// read all the bytes from start to EOF
+		read_Data_From_File_Inode(inode, file_size, 0, buf);
+		//printf("\n DEBUG : Buffer Read Here = %s", buf);
+		return file_size;
+	}
+	
+	else {
+		// read required number of bytes into the final character buffer
+		read_Data_From_File_Inode(inode, len, offset, buf);
+		//printf("\n DEBUG : Buffer Read Here = %s", buf);
+		return len;
+	}
 }
 
 /* write - write data to a file
