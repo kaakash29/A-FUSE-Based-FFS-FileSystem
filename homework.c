@@ -87,13 +87,49 @@ int get_bl_inode_number_from_inum(int inode_number) {
 	return inode_number % INODES_PER_BLK;
 }
 
+/* remove_last_token : char*, char**  -> char*
+ * Tokenizes the string path based on the separator "/" and
+ * removes the last token and returns the string. Also,
+ * sets the last token in last_token */
+char* remove_last_token(const char *path, char** last_token) {
+	char* working_string = NULL;
+	char* curr_substring = NULL;
+	char* separator = "/";
+	/* Allocate memory for return string */
+	char* return_string = (char*) malloc(sizeof(char) * strlen(path));
+	char* prev_string = NULL;
+	if (path != NULL) {
+		/* to start path with "/" if it already does */
+		if (strncmp(separator, path, 1) == 0)
+			strcat(return_string, separator);
+		working_string = strdup(path);
+		curr_substring = strtok(working_string, separator);
+		while(curr_substring != NULL) {
+			prev_string = curr_substring;
+			curr_substring = strtok(0, separator);
+			if (curr_substring != NULL) {
+				/* append prev_string to result if curr string is not 
+				 * null indicating prev_string is not the last token  */
+				strcat(return_string, prev_string);
+				strcat(return_string, separator);
+			}
+			else {
+				/* set the last token */
+				*last_token = prev_string;
+			}
+		}
+		/* replace the last "/" with a null terminator */
+		return_string[strlen(return_string) - 1] = '\0';
+	}
+	return return_string;
+}
+
 static int fs_translate_path_to_inum(const char* path, int* type) {
 	char *curr_dir = NULL;
 	char *parent_dir = NULL;
 	char *working_path = NULL;
-	struct fs7600_dirent entry_list[32];
 	struct fs7600_inode *root_inode = NULL;
-	int i, dir_block_num, parent_dir_inode,inode ;
+	int i, dir_block_num, parent_dir_inode, inode;
 	int found = 0;
 	int ftype;
 	char* forward_path = NULL;
@@ -123,26 +159,9 @@ static int fs_translate_path_to_inum(const char* path, int* type) {
 	
 	//traverse over the token in the path.
 	while(curr_dir != NULL) {
-		
-		// read the listing of files from the parent directory
-		get_dir_entries_from_dir_inum(parent_dir_inode, &entry_list);
-		
-		//printf("\n DEBUG : Checking for name %s\n", curr_dir);
-		// Check if the curr_file is present in parent directory
-		for (i = 0; i < 32; i++) {
-			
-			//printf("\n DEBUG : Current directory contains file %s with inode %d ",entry_list[i].name, entry_list[i].inode);
-			
-			if ((entry_list[i].valid == 1) &&
-			 (strcmp(curr_dir, entry_list[i].name) == 0)) {
-			
-				//printf("\n DEBUG : File present in Directory ... ");
-				ftype = entry_list[i].isDir;
-				inode = entry_list[i].inode;
-				found = 1;
-				break;
-			}
-		}
+		found = 0;
+		found = entry_exists_in_directory(parent_dir_inode, curr_dir,
+						&ftype, &inode);
 		
 		if (found == 0) {
 			// File not found in direcotry
@@ -180,8 +199,9 @@ static int fs_translate_path_to_inum(const char* path, int* type) {
 	}
 }
 
+/*  */
 int get_dir_entries_from_dir_inum(int inode_number, 
-									struct fs7600_dirent* entry_list) {
+									struct fs7600_dirent *entry_list) {
 	//struct fs7600_dirent entry_list[32];
     struct fs7600_inode *inode = NULL;
     int dir_block_num;
@@ -191,6 +211,22 @@ int get_dir_entries_from_dir_inum(int inode_number,
 	
 	/* read the first block which is the only block for directory inode */
     if (disk->ops->read(disk, inode->direct[0], 1, entry_list) < 0)
+        exit(1);
+    
+    return SUCCESS;
+}
+
+int write_dir_entries_to_disk_for_dir_inum(int inode_number, 
+									struct fs7600_dirent* entry_list) {
+	//struct fs7600_dirent entry_list[32];
+    struct fs7600_inode *inode = NULL;
+    int dir_block_num;
+    
+    /* get the inode from the inode number */
+    inode = get_inode_from_inum(inode_number);
+	
+	/* write the first block which is the only block for directory inode */
+    if (disk->ops->write(disk, inode->direct[0], 1, entry_list) < 0)
         exit(1);
     
     return SUCCESS;
@@ -383,6 +419,28 @@ static int fs_releasedir(const char *path, struct fuse_file_info *fi)
     return 0;
 }
 
+int entry_exists_in_directory(int dir_inum, char* entry, 
+						int* ftype, int* inode) {
+	struct fs7600_dirent entry_list[32];
+	int found = 0, i;
+	/* read the listing of files from the parent directory */
+	get_dir_entries_from_dir_inum(dir_inum, &(entry_list[0]));
+	/* Check if entry is present in parent directory entry list */
+	for (i = 0; i < 32; i++) {
+		//printf("\n DEBUG : Current directory contains file %s with inode %d ",
+		//entry_list[i].name, entry_list[i].inode);
+		if ((entry_list[i].valid == 1) &&
+		 (strcmp(entry, entry_list[i].name) == 0)) {
+			*ftype = entry_list[i].isDir;
+			*inode = entry_list[i].inode;
+			found = 1;
+		}
+	}
+	return found;
+}
+
+
+
 /* mknod - create a new file with permissions (mode & 01777)
  *
  * Errors - path resolution, EEXIST
@@ -411,7 +469,31 @@ static int fs_mknod(const char *path, mode_t mode, dev_t dev)
 static int fs_mkdir(const char *path, mode_t mode)
 {
 	//printf("\n DEBUG : fs_mkdir function called ");fflush(stdout);
-    return -EOPNOTSUPP;
+	char* new_dir_name = NULL;
+	int type, inode_number, existing_inode_number, found = 0;
+	char* stripped_path = remove_last_token(path, &new_dir_name);
+	/* get the inode number of the directory where to create the 
+	 * new directory from the stripped path */
+	inode_number = fs_translate_path_to_inum(stripped_path, &type);
+	if (inode_number < 0) {
+		/* error */
+		return inode_number;
+	}
+	else if(type == IS_FILE) {
+		/* the penultimate token is not a directory */
+		return -ENOTDIR;
+	}
+	found = entry_exists_in_directory(inode_number, new_dir_name, 
+						&type, &existing_inode_number);
+	if (found == 1) {
+		/* The directory to be created already exists, so error */
+		return -EEXIST;
+	}
+	//else if (entries_count >= 32) //{
+		/* direcotry full, no space, error */
+	//	return -ENOSPC;
+	//}
+    return SUCCESS;
 }
 
 /* truncate - truncate file to exactly 'len' bytes
