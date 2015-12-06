@@ -87,6 +87,23 @@ int get_bl_inode_number_from_inum(int inode_number) {
 	return inode_number % INODES_PER_BLK;
 }
 
+int get_free_inode_number() {
+	int inode_count = sizeof(*inode_map);
+	int free_entry = 0;
+	while (free_entry < inode_count) {
+		printf("\n Checking for inode number %d \n", free_entry);
+		if (FD_ISSET(free_entry, inode_map))
+		{
+			//break;
+		}
+		else {
+			break;
+		}
+		free_entry ++;
+	}
+	return free_entry;
+}
+
 /* remove_last_token : char*, char**  -> char*
  * Tokenizes the string path based on the separator "/" and
  * removes the last token and returns the string. Also,
@@ -101,7 +118,7 @@ char* remove_last_token(const char *path, char** last_token) {
 	if (path != NULL) {
 		/* to start path with "/" if it already does */
 		if (strncmp(separator, path, 1) == 0)
-			strcat(return_string, separator);
+			strcpy(return_string, separator);
 		working_string = strdup(path);
 		curr_substring = strtok(working_string, separator);
 		while(curr_substring != NULL) {
@@ -120,6 +137,7 @@ char* remove_last_token(const char *path, char** last_token) {
 		}
 		/* replace the last "/" with a null terminator */
 		return_string[strlen(return_string) - 1] = '\0';
+		
 	}
 	return return_string;
 }
@@ -266,12 +284,12 @@ void* fs_init(struct fuse_conn_info *conn)
      
     block_num_to_read += 1;
     /* read the inode bitmap */
-    if (disk->ops->read(disk, block_num_to_read, sb.inode_map_sz, &inode_map) < 0)
+    if (disk->ops->read(disk, block_num_to_read, sb.inode_map_sz, inode_map) < 0)
         exit(1);
     
     /* read the block bitmap */
     block_num_to_read += sb.inode_map_sz;
-    if (disk->ops->read(disk, block_num_to_read, sb.block_map_sz, &block_map) < 0)
+    if (disk->ops->read(disk, block_num_to_read, sb.block_map_sz, block_map) < 0)
         exit(1);
     
     /* read the inodes */
@@ -458,6 +476,11 @@ static int fs_mknod(const char *path, mode_t mode, dev_t dev)
     return -EOPNOTSUPP;
 }
 
+int create_block(int parent_dir_inum) {
+	int inode_number = get_free_inode_number();
+	printf("\n DEBUG: new inode number = %d \n", inode_number);
+}
+
 /* mkdir - create a directory with the given mode.
  * Errors - path resolution, EEXIST
  * Conditions for EEXIST are the same as for create. 
@@ -471,9 +494,11 @@ static int fs_mkdir(const char *path, mode_t mode)
 	//printf("\n DEBUG : fs_mkdir function called ");fflush(stdout);
 	char* new_dir_name = NULL;
 	int type, inode_number, existing_inode_number, found = 0;
-	char* stripped_path = remove_last_token(path, &new_dir_name);
+	const char* stripped_path = remove_last_token(path, &new_dir_name);
 	/* get the inode number of the directory where to create the 
 	 * new directory from the stripped path */
+	printf("\n DEBUG: mkdir stripped path = %s with size = %d\n", stripped_path, strlen(stripped_path));
+	
 	inode_number = fs_translate_path_to_inum(stripped_path, &type);
 	if (inode_number < 0) {
 		/* error */
@@ -493,6 +518,7 @@ static int fs_mkdir(const char *path, mode_t mode)
 		/* direcotry full, no space, error */
 	//	return -ENOSPC;
 	//}
+	create_block(inode_number);
     return SUCCESS;
 }
 
