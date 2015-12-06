@@ -24,7 +24,7 @@
 #define IS_DIR 1
 #define IS_FILE 0
 
-extern int homework_part;       /* set by '-part n' command-line option */
+extern int homework_part; /* set by '-part n' command-line option */
 
 /* 
  * disk access - the global variable 'disk' points to a blkdev
@@ -70,24 +70,95 @@ struct blkdev *cache_create(struct blkdev *d)
  *   FD_CLR(##, block_map);
  *   FD_SET(##, block_map);
  */
-fd_set *inode_map;              /* = malloc(sb.inode_map_size * FS_BLOCK_SIZE); */
+fd_set *inode_map;  /* = malloc(sb.inode_map_size * FS_BLOCK_SIZE); */
 fd_set *block_map;
 
-struct fs7600_inode *inodes;
+struct fs7600_super sb;  /* to store the super block */
 
+/* to store the inodes list */
+/* the number of blocks upper limimted to 1024, can be increased */
+struct fs7600_inode inodes_list[INODES_PER_BLK][INODES_PER_BLK];
+
+/* get_inode_from_inum: int -> struct fs7600_inode*
+ * Returns the pointer to the inode for the given inode_number */
 struct fs7600_inode* get_inode_from_inum(int inode_number) {
-	return &inodes[inode_number];
+	/* Get the block number which contains the inode entry */
+	int disk_block = get_block_number_from_inum(inode_number);
+	/* get the inode entry from the block */
+	int disk_block_entry = get_bl_inode_number_from_inum(inode_number);
+	/* Return the address of the entry */
+	return &(inodes_list[disk_block][disk_block_entry]);
 }
 
+/* get_inodes_region_starting_block: -> int
+ * Returns the starting block for the inodes region on disk. */
+int get_inodes_region_starting_block() {
+	return (sb.block_map_sz + sb.inode_map_sz + 1);
+}
+
+/* get_block_number_from_inum : int -> int
+ * Returns the block number which contains this inode_number 
+ * from the inodes region */
 int get_block_number_from_inum(int inode_number) {
 	return inode_number / INODES_PER_BLK;
 }
 
+/* write_block_to_inode_region : int -> int
+ * Writes the block for this inode number to disk */
+int write_block_to_inode_region(int inode_number) {
+	/* get the block number for the inode_number */
+	int blnum = get_block_number_from_inum(inode_number);
+	/* get the actual corresponding block number on disk */
+	int actual_disk_block = get_inodes_region_starting_block() + blnum;
+	printf("\n DEBUG: Writing actual inode block = %d to disk \n", 
+	actual_block_on_disk);
+	/* write the block to disk */
+	if (disk->ops->write(disk, actual_disk_block, 1, 
+					&inodes_list[blnum]) < 0)
+		/* error on write */
+        exit(1);
+    /* Return success */
+    return SUCCESS;
+}
+
+/* get_bl_inode_number_from_inum; int -> int
+ * Retuns the inode entry number in a block 
+ * for the given inode number  */
 int get_bl_inode_number_from_inum(int inode_number) {
 	return inode_number % INODES_PER_BLK;
 }
 
-/* get_free_inode_number
+/* get_free_block_number: -> int
+ * Returns a free block number, if possible, otherwise 0. */
+int get_free_block_number() {
+	int block_count = sizeof(*block_map);
+	int free_entry = 0;
+	while (free_entry < block_count) {
+		//printf("\n Checking for block number %d \n", free_entry);
+		if (!(FD_ISSET(free_entry, block_map)))
+		{
+			break;
+		}
+		free_entry ++;
+	}
+	return free_entry;
+}
+
+/* set_block_number : int -> int
+ * Sets the bit block_num in block_map. */
+int set_block_number(int block_num) {
+	FD_SET(block_num, block_map);
+	return SUCCESS;
+}
+
+/* clear_block_number : int -> int
+ * Clears the bit block_num in block_map. */
+int clear_block_number(int block_num) {
+	FD_CLR(block_num, block_map);
+	return SUCCESS;
+}
+
+/* get_free_inode_number: -> int
  * Returns a free inode number, if possible, otherwise 0. */
 int get_free_inode_number() {
 	int inode_count = sizeof(*inode_map);
@@ -103,14 +174,14 @@ int get_free_inode_number() {
 	return free_entry;
 }
 
-/* set_inode_number : int
+/* set_inode_number : int -> int
  * Sets the bit inum in inode_map. */
 int set_inode_number(int inum) {
 	FD_SET(inum, inode_map);
 	return SUCCESS;
 }
 
-/* clear_inode_number : int
+/* clear_inode_number : int -> int
  * Clears the bit inum in inode_map. */
 int clear_inode_number(int inum) {
 	FD_CLR(inum, inode_map);
@@ -150,7 +221,6 @@ char* remove_last_token(const char *path, char** last_token) {
 		}
 		/* replace the last "/" with a null terminator */
 		return_string[strlen(return_string) - 1] = '\0';
-		
 	}
 	return return_string;
 }
@@ -273,12 +343,11 @@ int write_dir_entries_to_disk_for_dir_inum(int inode_number,
 void* fs_init(struct fuse_conn_info *conn)
 {
 	/* read the super block */
-    struct fs7600_super sb;
+    //struct fs7600_super sb;
     int block_num_to_read = 0;
     if (disk->ops->read(disk, block_num_to_read, 1, &sb) < 0)
         exit(1);
-
-	struct fs7600_inode inodes_list[sb.inode_region_sz][INODES_PER_BLK];
+	//struct fs7600_inode inodes_list[sb.inode_region_sz][INODES_PER_BLK];
     printf("\n DEBUG : fs_init function called ");fflush(stdout);
     /* your code here */
     sb.magic = FS7600_MAGIC;
@@ -297,25 +366,22 @@ void* fs_init(struct fuse_conn_info *conn)
      
     block_num_to_read += 1;
     /* read the inode bitmap */
-    if (disk->ops->read(disk, block_num_to_read, sb.inode_map_sz, inode_map) < 0)
+    if (disk->ops->read(disk, block_num_to_read, sb.inode_map_sz, 
+		inode_map) < 0)
         exit(1);
     
     /* read the block bitmap */
     block_num_to_read += sb.inode_map_sz;
-    if (disk->ops->read(disk, block_num_to_read, sb.block_map_sz, block_map) < 0)
+    if (disk->ops->read(disk, block_num_to_read, sb.block_map_sz, 
+		block_map) < 0)
         exit(1);
     
-    /* read the inodes */
-    
-    //inodes = (struct fs7600_inode **) malloc(sizeof(struct fs7600_inode *) * sb.inode_region_sz);
-    //for (i = 0; i < sb.inode_region_sz; i++) {
-	//	inodes[i] = (struct fs7600_inode *) malloc(sizeof(struct fs7600_inode) * INODES_PER_BLK);
-	//}
-	
+    /* read the inodes */	
     block_num_to_read += sb.block_map_sz;
-    if (disk->ops->read(disk, block_num_to_read, sb.inode_region_sz, inodes_list) < 0)
+    if (disk->ops->read(disk, block_num_to_read, sb.inode_region_sz, 
+		inodes_list) < 0)
         exit(1);
-    inodes = &inodes_list[0][0];
+    //inodes = &inodes_list[0];
      
     if (homework_part > 3)
         disk = cache_create(disk);
@@ -488,14 +554,39 @@ static int fs_mknod(const char *path, mode_t mode, dev_t dev)
     return -EOPNOTSUPP;
 }
 
+/*  */
+int initialize_new_dir_inode(int inode_number, mode_t mode, int block_num) {
+	struct fs7600_inode* inode_ptr;
+	inode_ptr = get_inode_from_inum(inode_number);
+	inode_ptr->mode = mode;
+	inode_ptr->ctime = time(NULL);
+	inode_ptr->mtime = time(NULL);
+	inode_ptr->size = FS_BLOCK_SIZE;
+	inode_ptr->direct[0] = (uint32_t)block_num;
+	
+}
+
 int create_block(int parent_dir_inum) {
+	
+	/* get a free inode number */
 	int inode_number = get_free_inode_number();
-	if (inode_number <= 0) {
-		/* Error: no free inode numbers, no space */
+	/* get a free block number */
+	int block_number = get_free_block_number();
+	if ((inode_number <= 0) || (block_number <= 0)) {
+		/* Error: no free inode number, no space 
+		 * No free blocks */
 		return -ENOSPC;
 	}
 	
+	/* fetch the inode from inode number */
+	
+	//write_dir_entries_to_disk_for_dir_inum
+	
+	/* Set the bit in node map to mark as allocated */
+	set_inode_number(inode_number);
+	
 	printf("\n DEBUG: new inode number = %d \n", inode_number);
+	return SUCCESS;
 }
 
 /* mkdir - create a directory with the given mode.
@@ -514,7 +605,8 @@ static int fs_mkdir(const char *path, mode_t mode)
 	const char* stripped_path = remove_last_token(path, &new_dir_name);
 	/* get the inode number of the directory where to create the 
 	 * new directory from the stripped path */
-	printf("\n DEBUG: mkdir stripped path = %s with size = %d\n", stripped_path, strlen(stripped_path));
+	printf("\n DEBUG: mkdir stripped path = %s with size = %d\n", 
+	stripped_path, strlen(stripped_path));
 	
 	inode_number = fs_translate_path_to_inum(stripped_path, &type);
 	if (inode_number < 0) {
@@ -535,8 +627,7 @@ static int fs_mkdir(const char *path, mode_t mode)
 		/* direcotry full, no space, error */
 	//	return -ENOSPC;
 	//}
-	create_block(inode_number);
-    return SUCCESS;
+	return create_block(inode_number);
 }
 
 /* truncate - truncate file to exactly 'len' bytes
@@ -613,8 +704,8 @@ static int fs_chmod(const char *path, mode_t mode)
 	inode = get_inode_from_inum(inum);
 	/* Set the mode */
 	inode->mode = mode;
-	/* Return Success */
-    return SUCCESS;
+	/* Write the modified inode block to disk */
+	return write_block_to_inode_region(inum);
 }
 
 int fs_utime(const char *path, struct utimbuf *ut)
@@ -633,8 +724,8 @@ int fs_utime(const char *path, struct utimbuf *ut)
 	/* Set the ctime and mtime */
 	inode->ctime = ut->actime;
 	inode->mtime = ut->modtime;
-	/* Return Success */
-    return SUCCESS;
+	/* Write the modified inode block to disk */
+    return write_block_to_inode_region(inum);
 }
 
 int read_Data_From_File_Inode(struct fs7600_inode *inode, int len, off_t offset, char* buf) 
