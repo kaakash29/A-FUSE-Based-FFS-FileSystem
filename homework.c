@@ -87,21 +87,34 @@ int get_bl_inode_number_from_inum(int inode_number) {
 	return inode_number % INODES_PER_BLK;
 }
 
+/* get_free_inode_number
+ * Returns a free inode number, if possible, otherwise 0. */
 int get_free_inode_number() {
 	int inode_count = sizeof(*inode_map);
 	int free_entry = 0;
 	while (free_entry < inode_count) {
-		printf("\n Checking for inode number %d \n", free_entry);
-		if (FD_ISSET(free_entry, inode_map))
+		//printf("\n Checking for inode number %d \n", free_entry);
+		if (!(FD_ISSET(free_entry, inode_map)))
 		{
-			//break;
-		}
-		else {
 			break;
 		}
 		free_entry ++;
 	}
 	return free_entry;
+}
+
+/* set_inode_number : int
+ * Sets the bit inum in inode_map. */
+int set_inode_number(int inum) {
+	FD_SET(inum, inode_map);
+	return SUCCESS;
+}
+
+/* clear_inode_number : int
+ * Clears the bit inum in inode_map. */
+int clear_inode_number(int inum) {
+	FD_CLR(inum, inode_map);
+	return SUCCESS;
 }
 
 /* remove_last_token : char*, char**  -> char*
@@ -418,7 +431,6 @@ static int fs_readdir(const char *path, void *ptr, fuse_fill_dir_t filler,
 		if ((entry_list[i].name != NULL) && (entry_list[i].valid == 1))
 			filler(ptr, entry_list[i].name, &sb, 0);
 	}
-	
     return SUCCESS;
 }
 
@@ -478,6 +490,11 @@ static int fs_mknod(const char *path, mode_t mode, dev_t dev)
 
 int create_block(int parent_dir_inum) {
 	int inode_number = get_free_inode_number();
+	if (inode_number <= 0) {
+		/* Error: no free inode numbers, no space */
+		return -ENOSPC;
+	}
+	
 	printf("\n DEBUG: new inode number = %d \n", inode_number);
 }
 
