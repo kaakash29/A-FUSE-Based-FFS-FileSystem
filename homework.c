@@ -292,17 +292,17 @@ static int fs_getattr(const char *path, struct stat *sb)
 	int inode_number;
 	struct fs7600_inode* inode;
 	int type;
-	printf("\n DEBUG : fs_getattr function called trying to get attributes for path = %s",path);
+	//printf("\n DEBUG : fs_getattr function called trying to get attributes for path = %s",path);
 	fflush(stdout);fflush(stderr);
 	
 	/* translate the path to the inode_number, if possible */
 	inode_number = fs_translate_path_to_inum(path, &type);
-	printf("\n DEBUG : Path translated to inode number = %d",inode_number);
+	//printf("\n DEBUG : Path translated to inode number = %d",inode_number);
 	fflush(stdout);fflush(stderr);
 	
 	/* if path translation returned an error, then return the error */
 	if ((inode_number == -ENOENT) || (inode_number == -ENOTDIR)) {
-		printf("\n DEBUG : *** Path translation returned an ERROR ***");
+		//printf("\n DEBUG : *** Path translation returned an ERROR ***");
 		fflush(stdout);fflush(stderr);
 		return inode_number; 
 	}
@@ -337,13 +337,13 @@ static int fs_readdir(const char *path, void *ptr, fuse_fill_dir_t filler,
 	int type, i;
 	struct fs7600_dirent entry_list[32];
 	struct stat sb;
-	printf("\n DEBUG : fs_readdir function called ");fflush(stdout);
-	printf("\n DEBUG : Trying to read path = %s",path); fflush(stdout);
+	//printf("\n DEBUG : fs_readdir function called ");fflush(stdout);
+	//printf("\n DEBUG : Trying to read path = %s",path); fflush(stdout);
 	
 	/* translate the path to the inode_number, if possible */
 	inode_number = fs_translate_path_to_inum(path, &type);
 	
-	printf("\n DEBUG : Path %s Translated to inode %d of type %s", path, inode_number, type == IS_DIR?"DIR":"FILE"); fflush(stdout);
+	//printf("\n DEBUG : Path %s Translated to inode %d of type %s", path, inode_number, type == IS_DIR?"DIR":"FILE"); fflush(stdout);
 	
 	/* If path translation returned an error, then return the error */
 	if ((inode_number == -ENOENT) || (inode_number == -ENOTDIR))
@@ -476,13 +476,40 @@ static int fs_rename(const char *src_path, const char *dst_path)
 static int fs_chmod(const char *path, mode_t mode)
 {
 	//printf("\n DEBUG : fs_chmod function called ");fflush(stdout);
-    return -EOPNOTSUPP;
+	struct fs7600_inode* inode;
+	int type;
+	/* fetch the inode number from the path */
+	int inum = fs_translate_path_to_inum(path, &type);
+	if (inum < 0) {
+		/* return error */
+		return inum;
+	}
+	/* Get the inode from the inode number */
+	inode = get_inode_from_inum(inum);
+	/* Set the mode */
+	inode->mode = mode;
+	/* Return Success */
+    return SUCCESS;
 }
 
 int fs_utime(const char *path, struct utimbuf *ut)
 {
 	//printf("\n DEBUG : fs_utime function called ");fflush(stdout);
-    return -EOPNOTSUPP;
+    struct fs7600_inode* inode;
+	int type;
+	/* fetch the inode number from the path */
+	int inum = fs_translate_path_to_inum(path, &type);
+	if (inum < 0) {
+		/* return error */
+		return inum;
+	}
+	/* Get the inode from the inode number */
+	inode = get_inode_from_inum(inum);
+	/* Set the ctime and mtime */
+	inode->ctime = ut->actime;
+	inode->mtime = ut->modtime;
+	/* Return Success */
+    return SUCCESS;
 }
 
 int read_Data_From_File_Inode(struct fs7600_inode *inode, int len, off_t offset, char* buf) 
@@ -607,8 +634,8 @@ static int fs_read(const char *path, char *buf, size_t len, off_t offset,
 	int file_size; //local variable to hold the size of a file on disk
 	struct fs7600_inode *inode = NULL;
 	
-	printf("\n DEBUG : fs_read function called ");fflush(stdout);
-	printf("\n DEBUG : Parameters for the READ --> PATH = %s REQ_LEN = %d OFFSET = %jd",path, len, (intmax_t)offset);
+	//printf("\n DEBUG : fs_read function called ");fflush(stdout);
+	//printf("\n DEBUG : Parameters for the READ --> PATH = %s REQ_LEN = %d OFFSET = %jd",path, len, (intmax_t)offset);
 	
 	inode_num = fs_translate_path_to_inum(path, &type);
 	
