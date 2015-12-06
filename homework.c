@@ -112,7 +112,7 @@ static int fs_translate_path_to_inum(const char* path, int* type) {
 	// present in directory.
 	working_path = strdup(path);
 	curr_dir = strtok(working_path, "/");
-	
+	 
 	if (curr_dir == NULL){
 		*type = 1;
 		return 1;
