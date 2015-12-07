@@ -622,24 +622,10 @@ static int fs_mkdir(const char *path, mode_t mode)
  * Returns the parent dir inode number on success, otherwise
  * returns error. */
 int validate_path_for_new_create(const char *path, char** new_name) {
-	//printf("\n DEBUG : fs_mkdir function called ");fflush(stdout);
 	int type, parent_inum, existing_inode_number, found = 0;
-	int new_inum = 0;
-	const char* stripped_path = remove_last_token(path, new_name);
-	/* get the inode number of the directory/file where to create the 
-	 * new directory from the stripped path */
-	printf("\n DEBUG: mkdir stripped path = %s with size = %d\n", 
-	stripped_path, strlen(stripped_path));
-	parent_inum = fs_translate_path_to_inum(stripped_path, &type);
-	printf("\n DEBUG: Parent inum = %d to disk \n", parent_inum);
-	if (parent_inum < 0) {
-		/* error */
+	parent_inum = validate_path_till_penultimate(path, new_name);
+	if (parent_inum < 0) 
 		return parent_inum;
-	}
-	else if(type == IS_FILE) {
-		/* the penultimate token is not a directory */
-		return -ENOTDIR;
-	}
 	found = entry_exists_in_directory(parent_inum, *new_name, 
 						&type, &existing_inode_number);
 	if (found == 1) {
@@ -766,13 +752,106 @@ static int fs_unlink(const char *path)
     return -EOPNOTSUPP;
 }
 
+int validate_path_till_penultimate(const char* path, char** last_token) {
+	int type, parent_inum;
+	const char* stripped_path = remove_last_token(path, last_token);
+	/* get the inode number of the directory/file where to create the 
+	 * new directory from the stripped path */
+	printf("\n DEBUG: mkdir stripped path = %s with size = %d\n", 
+	stripped_path, strlen(stripped_path));
+	parent_inum = fs_translate_path_to_inum(stripped_path, &type);
+	printf("\n DEBUG: Parent inum = %d to disk \n", parent_inum);
+	if(type == IS_FILE) {
+		/* the penultimate token is not a directory */
+		return -ENOTDIR;
+	}
+	return parent_inum;
+}
+
+/* validate_path_for_remove : const char *, char** -> int
+ * Validates the path till the penultimate element for 
+ * directory removal.
+ * Returns the parent dir inode number on success, otherwise
+ * returns error. */
+int validate_path_for_remove(const char *path, char** to_remove, 
+										int* remove_dir_inum) {
+
+	int type, parent_inum, found = 0;
+	parent_inum = validate_path_till_penultimate(path, to_remove);
+	if (parent_inum < 0) 
+		return parent_inum;
+	found = entry_exists_in_directory(parent_inum, *to_remove, 
+						&type, remove_dir_inum);
+	if (found == 0) {
+		/* The directory to remove does not exist, so error */
+		return -ENOENT;
+	}
+	return parent_inum;
+}
+
+/* remove_dir_is_empty : int -> int
+ * Returns 1 if the directory with inode number dir_inum 
+ * is empty, otherwise 0. */
+int remove_dir_is_empty(int dir_inum) {
+	struct fs7600_dirent entry_list[32];
+	int empty = 1, i;
+	/* read the listing of files from the directory */
+	get_dir_entries_from_dir_inum(dir_inum, &(entry_list[0]));
+	/* Check if a valid entry is present in directory entry list */
+	for (i = 0; i < 32; i++) {
+		if (entry_list[i].valid == 1) {
+			empty = 0;
+			break;
+		}
+	}
+	return empty;
+}
+
+int remove_entry_from_dir_inode(int parent_dir_inum, char* name) {
+	struct fs7600_dirent entry_list[32];
+	int i, found = 0;
+	get_dir_entries_from_dir_inum(parent_dir_inum, entry_list);
+	/* Check if entry is present in parent directory entry list */
+	for (i = 0; i < 32; i++) {
+		if ((entry_list[i].valid == 1) &&
+		 (strcmp(name, entry_list[i].name) == 0)) {
+			/* mark as invalid */
+			entry_list[i].valid = 0;
+			found = 1;
+			break;
+		}
+	}
+	if (found == 0) {
+		/* Entry not found, Error */
+		return -ENOENT;
+	}
+	return write_dir_entries_to_disk_for_dir_inum(parent_dir_inum, 
+												entry_list);
+	//return SUCCESS;
+}
+
 /* rmdir - remove a directory
  *  Errors - path resolution, ENOENT, ENOTDIR, ENOTEMPTY
  */
 static int fs_rmdir(const char *path)
 {
-	//printf("\n DEBUG : fs_rmdir function called ");fflush(stdout);
-    return -EOPNOTSUPP;
+	char* to_remove_dir = NULL;
+	int remove_dir_inum = -1;
+	/* validate path and get the parent directory inode number */
+	int parent_inum = validate_path_for_remove(path, 
+							&to_remove_dir, &remove_dir_inum);
+	if (parent_inum < 0) {
+		/* error */
+		return parent_inum;
+	}
+	/* Check whether the directory to remove is empty */
+	if (remove_dir_is_empty(remove_dir_inum) != SUCCESS) {
+		/* the directory to remove is not empty. ERROR */
+		return -ENOTEMPTY;
+	}
+	/* Remove the entry for this directory from its parent directory */
+	return remove_entry_from_dir_inode(parent_inum, to_remove_dir);
+	//return SUCCESS;
 }
 
 /* rename - rename a file or directory
