@@ -448,17 +448,10 @@ static int fs_getattr(const char *path, struct stat *sb)
 	int inode_number;
 	struct fs7600_inode* inode;
 	int type;
-	//printf("\n DEBUG : fs_getattr function called trying to get attributes for path = %s",path);
-	fflush(stdout);fflush(stderr);
-	
 	/* translate the path to the inode_number, if possible */
 	inode_number = fs_translate_path_to_inum(path, &type);
-	//printf("\n DEBUG : Path translated to inode number = %d",inode_number);
-	fflush(stdout);fflush(stderr);
-	
 	/* if path translation returned an error, then return the error */
 	if ((inode_number == -ENOENT) || (inode_number == -ENOTDIR)) {
-		//printf("\n DEBUG : *** Path translation returned an ERROR ***");
 		fflush(stdout);fflush(stderr);
 		return inode_number; 
 	}
@@ -499,7 +492,8 @@ static int fs_readdir(const char *path, void *ptr, fuse_fill_dir_t filler,
 	/* translate the path to the inode_number, if possible */
 	inode_number = fs_translate_path_to_inum(path, &type);
 	
-	//printf("\n DEBUG : Path %s Translated to inode %d of type %s", path, inode_number, type == IS_DIR?"DIR":"FILE"); fflush(stdout);
+	//printf("\n DEBUG : Path %s Translated to inode %d of type %s", 
+	//path, inode_number, type == IS_DIR?"DIR":"FILE"); fflush(stdout);
 	
 	/* If path translation returned an error, then return the error */
 	if ((inode_number == -ENOENT) || (inode_number == -ENOTDIR))
@@ -807,7 +801,6 @@ static int fs_rename(const char *src_path, const char *dst_path)
  */
 static int fs_chmod(const char *path, mode_t mode)
 {
-	//printf("\n DEBUG : fs_chmod function called ");fflush(stdout);
 	struct fs7600_inode* inode;
 	int type;
 	/* fetch the inode number from the path */
@@ -826,7 +819,6 @@ static int fs_chmod(const char *path, mode_t mode)
 
 int fs_utime(const char *path, struct utimbuf *ut)
 {
-	//printf("\n DEBUG : fs_utime function called ");fflush(stdout);
     struct fs7600_inode* inode;
 	int type;
 	/* fetch the inode number from the path */
