@@ -84,8 +84,10 @@ struct fs7600_inode inodes_list[INODES_PER_BLK][INODES_PER_BLK];
 struct fs7600_inode* get_inode_from_inum(int inode_number) {
 	/* Get the block number which contains the inode entry */
 	int disk_block = get_block_number_from_inum(inode_number);
+	printf("\n disk_block = %d \n", disk_block);
 	/* get the inode entry from the block */
 	int disk_block_entry = get_bl_inode_number_from_inum(inode_number);
+	printf("\n disk_block_entry = %d \n", disk_block_entry);
 	/* Return the address of the entry */
 	return &(inodes_list[disk_block][disk_block_entry]);
 }
@@ -93,7 +95,19 @@ struct fs7600_inode* get_inode_from_inum(int inode_number) {
 /* get_inodes_region_starting_block: -> int
  * Returns the starting block for the inodes region on disk. */
 int get_inodes_region_starting_block() {
-	return (sb.block_map_sz + sb.inode_map_sz + 1);
+	return (sb.block_map_sz + get_block_map_starting_block());
+}
+
+/* get_inode_map_starting_block: -> int
+ * Returns the starting block for the inodes map on disk. */
+int get_inode_map_starting_block() {
+	return 1;
+}
+
+/* get_block_map_starting_block: -> int
+ * Returns the starting block for the blocks map on disk. */
+int get_block_map_starting_block() {
+	return (sb.inode_map_sz + get_inode_map_starting_block());
 }
 
 /* get_block_number_from_inum : int -> int
@@ -111,7 +125,7 @@ int write_block_to_inode_region(int inode_number) {
 	/* get the actual corresponding block number on disk */
 	int actual_disk_block = get_inodes_region_starting_block() + blnum;
 	printf("\n DEBUG: Writing actual inode block = %d to disk \n", 
-	actual_block_on_disk);
+	actual_disk_block);
 	/* write the block to disk */
 	if (disk->ops->write(disk, actual_disk_block, 1, 
 					&inodes_list[blnum]) < 0)
@@ -148,6 +162,10 @@ int get_free_block_number() {
  * Sets the bit block_num in block_map. */
 int set_block_number(int block_num) {
 	FD_SET(block_num, block_map);
+	if (disk->ops->write(disk, get_block_map_starting_block(), 
+					sb.block_map_sz, block_map) < 0)
+		/* error on write */
+        exit(1);
 	return SUCCESS;
 }
 
@@ -155,6 +173,10 @@ int set_block_number(int block_num) {
  * Clears the bit block_num in block_map. */
 int clear_block_number(int block_num) {
 	FD_CLR(block_num, block_map);
+	if (disk->ops->write(disk, get_block_map_starting_block(), 
+					sb.block_map_sz, block_map) < 0)
+		/* error on write */
+        exit(1);
 	return SUCCESS;
 }
 
@@ -178,6 +200,10 @@ int get_free_inode_number() {
  * Sets the bit inum in inode_map. */
 int set_inode_number(int inum) {
 	FD_SET(inum, inode_map);
+	if (disk->ops->write(disk, get_inode_map_starting_block(), 
+					sb.inode_map_sz, inode_map) < 0)
+		/* error on write */
+        exit(1);
 	return SUCCESS;
 }
 
@@ -185,6 +211,10 @@ int set_inode_number(int inum) {
  * Clears the bit inum in inode_map. */
 int clear_inode_number(int inum) {
 	FD_CLR(inum, inode_map);
+	if (disk->ops->write(disk, get_inode_map_starting_block(), 
+					sb.inode_map_sz, inode_map) < 0)
+		/* error on write */
+        exit(1);
 	return SUCCESS;
 }
 
@@ -300,36 +330,40 @@ static int fs_translate_path_to_inum(const char* path, int* type) {
 	}
 }
 
-/*  */
+/* get_dir_entries_from_dir_inum : 
+ * 						int, struct fs7600_dirent* -> int
+ * Reads the entry_list for the directory with inode_number 
+ * from disk (only 1 block for a directory) 
+ * Returns SUCCESS 
+ *  */
 int get_dir_entries_from_dir_inum(int inode_number, 
-									struct fs7600_dirent *entry_list) {
+						struct fs7600_dirent *entry_list) {
 	//struct fs7600_dirent entry_list[32];
     struct fs7600_inode *inode = NULL;
     int dir_block_num;
-    
     /* get the inode from the inode number */
     inode = get_inode_from_inum(inode_number);
-	
-	/* read the first block which is the only block for directory inode */
+	/* read the first block which is the only block for dir inode */
     if (disk->ops->read(disk, inode->direct[0], 1, entry_list) < 0)
         exit(1);
-    
     return SUCCESS;
 }
 
+/* write_dir_entries_to_disk_for_dir_inum : 
+ * 							int, struct fs7600_dirent* -> int
+ * Writes the entry_list for the directory with inode_number 
+ * to disk (only 1 block for a directory) 
+ * Returns SUCCESS 
+ * */
 int write_dir_entries_to_disk_for_dir_inum(int inode_number, 
-									struct fs7600_dirent* entry_list) {
-	//struct fs7600_dirent entry_list[32];
+							struct fs7600_dirent* entry_list) {
     struct fs7600_inode *inode = NULL;
     int dir_block_num;
-    
     /* get the inode from the inode number */
     inode = get_inode_from_inum(inode_number);
-	
-	/* write the first block which is the only block for directory inode */
+	/* write the first block which is the only block for dir inode */
     if (disk->ops->write(disk, inode->direct[0], 1, entry_list) < 0)
         exit(1);
-    
     return SUCCESS;
 }
 
@@ -343,24 +377,14 @@ int write_dir_entries_to_disk_for_dir_inum(int inode_number,
 void* fs_init(struct fuse_conn_info *conn)
 {
 	/* read the super block */
-    //struct fs7600_super sb;
     int block_num_to_read = 0;
     if (disk->ops->read(disk, block_num_to_read, 1, &sb) < 0)
         exit(1);
-	//struct fs7600_inode inodes_list[sb.inode_region_sz][INODES_PER_BLK];
     printf("\n DEBUG : fs_init function called ");fflush(stdout);
-    /* your code here */
     sb.magic = FS7600_MAGIC;
-    //printf("\nINIT called-- magic = %u\n",sb.magic);
-    //printf("\ninode_map_sz = %u\n", sb.inode_map_sz);
-    //printf("\ninode_region_sz = %u\n", sb.inode_region_sz);
-    //printf("\nblock_map_sz = %u\n", sb.block_map_sz);
-    //printf("\nnum_blocks = %u\n", sb.num_blocks);
-    //printf("\nroot_inode = %u\n", sb.root_inode);
     
     /* Allocate memory for the inode and block bitmaps 
-     * and store the read bitmaps from disk */
-     
+     * and store the read bitmaps from disk */ 
     inode_map = malloc(sb.inode_map_sz * FS_BLOCK_SIZE);
     block_map = malloc(sb.block_map_sz * FS_BLOCK_SIZE);
      
@@ -381,7 +405,6 @@ void* fs_init(struct fuse_conn_info *conn)
     if (disk->ops->read(disk, block_num_to_read, sb.inode_region_sz, 
 		inodes_list) < 0)
         exit(1);
-    //inodes = &inodes_list[0];
      
     if (homework_part > 3)
         disk = cache_create(disk);
@@ -515,6 +538,10 @@ static int fs_releasedir(const char *path, struct fuse_file_info *fi)
     return 0;
 }
 
+/* entry_exists_in_directory : int, char*, int*, int* -> int
+ * Checks in the directory entries for the inode number dir_num
+ * whether entry exists in it, and sets the type and inode number 
+ * for it. */
 int entry_exists_in_directory(int dir_inum, char* entry, 
 						int* ftype, int* inode) {
 	struct fs7600_dirent entry_list[32];
@@ -523,19 +550,16 @@ int entry_exists_in_directory(int dir_inum, char* entry,
 	get_dir_entries_from_dir_inum(dir_inum, &(entry_list[0]));
 	/* Check if entry is present in parent directory entry list */
 	for (i = 0; i < 32; i++) {
-		//printf("\n DEBUG : Current directory contains file %s with inode %d ",
-		//entry_list[i].name, entry_list[i].inode);
 		if ((entry_list[i].valid == 1) &&
 		 (strcmp(entry, entry_list[i].name) == 0)) {
 			*ftype = entry_list[i].isDir;
 			*inode = entry_list[i].inode;
 			found = 1;
+			break;
 		}
 	}
 	return found;
 }
-
-
 
 /* mknod - create a new file with permissions (mode & 01777)
  *
@@ -550,43 +574,23 @@ int entry_exists_in_directory(int dir_inum, char* entry,
  */
 static int fs_mknod(const char *path, mode_t mode, dev_t dev)
 {
-	//printf("\n DEBUG : fs_mknod function called ");fflush(stdout);
-    return -EOPNOTSUPP;
-}
-
-/*  */
-int initialize_new_dir_inode(int inode_number, mode_t mode, int block_num) {
-	struct fs7600_inode* inode_ptr;
-	inode_ptr = get_inode_from_inum(inode_number);
-	inode_ptr->mode = mode;
-	inode_ptr->ctime = time(NULL);
-	inode_ptr->mtime = time(NULL);
-	inode_ptr->size = FS_BLOCK_SIZE;
-	inode_ptr->direct[0] = (uint32_t)block_num;
-	
-}
-
-int create_block(int parent_dir_inum) {
-	
-	/* get a free inode number */
-	int inode_number = get_free_inode_number();
-	/* get a free block number */
-	int block_number = get_free_block_number();
-	if ((inode_number <= 0) || (block_number <= 0)) {
-		/* Error: no free inode number, no space 
-		 * No free blocks */
-		return -ENOSPC;
+	char* new_dir_name = NULL;
+	int new_inum = 0;
+	if (!S_ISREG(mode)) {
+		/* File type expected, ERROR */
+		return -EINVAL;
 	}
-	
-	/* fetch the inode from inode number */
-	
-	//write_dir_entries_to_disk_for_dir_inum
-	
-	/* Set the bit in node map to mark as allocated */
-	set_inode_number(inode_number);
-	
-	printf("\n DEBUG: new inode number = %d \n", inode_number);
-	return SUCCESS;
+	/* validate path and get the parent directory inode number */
+	int parent_inum = validate_path_for_new_create(path, &new_dir_name);
+	if (parent_inum < 0) {
+		/* error */
+		return parent_inum;
+	}
+	/* initialize a new file inode */
+	new_inum = initialize_new_inode_and_block(mode);
+	return add_entry_to_dir_inode(parent_inum, new_dir_name, 
+									new_inum, IS_FILE);
+    //return SUCCESS;
 }
 
 /* mkdir - create a directory with the given mode.
@@ -599,35 +603,147 @@ int create_block(int parent_dir_inum) {
  */ 
 static int fs_mkdir(const char *path, mode_t mode)
 {
-	//printf("\n DEBUG : fs_mkdir function called ");fflush(stdout);
 	char* new_dir_name = NULL;
-	int type, inode_number, existing_inode_number, found = 0;
-	const char* stripped_path = remove_last_token(path, &new_dir_name);
-	/* get the inode number of the directory where to create the 
+	int new_inum = 0;
+	//if (!(S_ISDIR(mode))) {
+		/* wrong mode */
+	//	exit(1);
+	//}
+	/* validate path and get the parent directory inode number */
+	int parent_inum = validate_path_for_new_create(path, &new_dir_name);
+	if (parent_inum < 0) {
+		/* error */
+		return parent_inum;
+	}
+	/* initialize a new dir inode */
+	new_inum = initialize_new_inode_and_block(mode);
+	//return SUCCESS;
+	return add_entry_to_dir_inode(parent_inum, new_dir_name, 
+									new_inum, IS_DIR);
+}
+
+/* validate_path_for_new_create : const char *, char** -> int
+ * Validates the path till the penultimate element for new
+ * file/directory creation.
+ * Returns the parent dir inode number on success, otherwise
+ * returns error. */
+int validate_path_for_new_create(const char *path, char** new_name) {
+	//printf("\n DEBUG : fs_mkdir function called ");fflush(stdout);
+	int type, parent_inum, existing_inode_number, found = 0;
+	int new_inum = 0;
+	const char* stripped_path = remove_last_token(path, new_name);
+	/* get the inode number of the directory/file where to create the 
 	 * new directory from the stripped path */
 	printf("\n DEBUG: mkdir stripped path = %s with size = %d\n", 
 	stripped_path, strlen(stripped_path));
-	
-	inode_number = fs_translate_path_to_inum(stripped_path, &type);
-	if (inode_number < 0) {
+	parent_inum = fs_translate_path_to_inum(stripped_path, &type);
+	printf("\n DEBUG: Parent inum = %d to disk \n", parent_inum);
+	if (parent_inum < 0) {
 		/* error */
-		return inode_number;
+		return parent_inum;
 	}
 	else if(type == IS_FILE) {
 		/* the penultimate token is not a directory */
 		return -ENOTDIR;
 	}
-	found = entry_exists_in_directory(inode_number, new_dir_name, 
+	found = entry_exists_in_directory(parent_inum, *new_name, 
 						&type, &existing_inode_number);
 	if (found == 1) {
-		/* The directory to be created already exists, so error */
+		/* The directory/file to be created already exists, so error */
 		return -EEXIST;
 	}
-	//else if (entries_count >= 32) //{
-		/* direcotry full, no space, error */
-	//	return -ENOSPC;
-	//}
-	return create_block(inode_number);
+	return parent_inum;
+}
+
+/* initialize_new_inode_and_block : mode_t -> int
+ * Creates a new inode and allocates a block to it.
+ * Returns the inode number of the new flie/directory. */
+int initialize_new_inode_and_block(mode_t mode) {
+	struct fs7600_inode* inode_ptr;
+	struct fs7600_dirent entry_list[32];
+	/* get a free inode number */
+	int inode_number = get_free_inode_number();
+	printf("\n DEBUG: new inode number = %d \n", inode_number);
+	/* get a free block number */
+	int block_number = get_free_block_number();
+	printf("\n DEBUG: new block_number = %d \n", block_number);
+	if ((inode_number <= 0) || (block_number <= 0)) {
+		/* Error: no free inode number, no space 
+		 * No free blocks */
+		return -ENOSPC;
+	}
+	/* Set the bit in inode map to mark as allocated */
+	printf("\n DEBUG: set_inode_number called ");
+	set_inode_number(inode_number);
+	/* Set the bit in block map to mark as allocated */
+	printf("\n DEBUG: set_block_number called ");
+	set_block_number(block_number);
+	/* fetch the inode from inode number */
+	inode_ptr = get_inode_from_inum(inode_number);
+	/* set its attributes */
+	inode_ptr->uid = 1000;
+	inode_ptr->gid = 1000;
+	if (S_ISREG(mode)) {
+		inode_ptr->mode = (mode & 01777);
+		inode_ptr->size = 0;
+	}
+	else {
+		inode_ptr->mode = (mode & 0040755);
+		inode_ptr->size = FS_BLOCK_SIZE;
+	}
+	inode_ptr->ctime = time(NULL);
+	inode_ptr->mtime = time(NULL);
+	printf("\n DEBUG: inode_ptr->size =  = %d ", inode_ptr->size);
+	inode_ptr->direct[0] = (uint32_t) block_number;
+	inode_ptr->direct[1] = 0;
+	inode_ptr->direct[2] = 0;
+	inode_ptr->direct[3] = 0;
+	inode_ptr->direct[4] = 0;
+	inode_ptr->direct[5] = 0;
+	inode_ptr->indir_1 = 0;
+	inode_ptr->indir_2 = 0;
+	/* write the inode block for this new inode number to disk */
+	write_block_to_inode_region(inode_number);
+	//write_dir_entries_to_disk_for_dir_inum(inode_number, entry_list);
+	/* Return the inode number of the new directory/file */
+	return inode_number;
+}
+
+/* add_entry_to_dir_inode : int, char*, int, int -> int
+ * Adds an entry for name and inum in the entries set for 
+ * directory with inode number parent_dir_inum, based on isDir.
+ * Writes this modified directory block to disk.
+ * Returns -ENOSPC if all entries are full */
+int add_entry_to_dir_inode(int parent_dir_inum, char* name, 
+							int inum, int isDir) {
+	struct fs7600_dirent entry_list[32];
+	int i, found = 0;
+	get_dir_entries_from_dir_inum(parent_dir_inum, entry_list);
+	/* Check if entry is present in parent directory entry list */
+	for (i = 0; i < 32; i++) {
+		//printf("\n DEBUG : Current directory contains file %s with inode %d ",
+		//entry_list[i].name, entry_list[i].inode);
+		if (entry_list[i].valid == 0) {
+			/* mark as valid */
+			entry_list[i].valid = 1;
+			/* set for directory */
+			entry_list[i].isDir = isDir;
+			/* the inode number for directory/file */
+			//memcpy(&entry_list[i].inode, inum, sizeof(entry_list[i].inode));
+			entry_list[i].inode = (uint32_t) inum;
+			/* the name of directory */
+			memcpy(&entry_list[i].name, name, 
+								sizeof(entry_list[i].name));
+			found = 1;
+			break;
+		}
+	}
+	if (found == 0) {
+		/* No invalid entries found, directory full, Error */
+		return -ENOSPC;
+	}
+	return write_dir_entries_to_disk_for_dir_inum(parent_dir_inum, entry_list);
+	//return SUCCESS;
 }
 
 /* truncate - truncate file to exactly 'len' bytes
