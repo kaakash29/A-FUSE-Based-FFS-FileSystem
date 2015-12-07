@@ -845,7 +845,7 @@ static int fs_rmdir(const char *path)
 		return parent_inum;
 	}
 	/* Check whether the directory to remove is empty */
-	if (remove_dir_is_empty(remove_dir_inum) != SUCCESS) {
+	if (remove_dir_is_empty(remove_dir_inum) != 1) {
 		/* the directory to remove is not empty. ERROR */
 		return -ENOTEMPTY;
 	}
