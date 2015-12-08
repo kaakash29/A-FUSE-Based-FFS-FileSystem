@@ -581,7 +581,7 @@ static int fs_mknod(const char *path, mode_t mode, dev_t dev)
 		return parent_inum;
 	}
 	/* initialize a new file inode */
-	new_inum = initialize_new_inode_and_block(mode);
+	new_inum = initialize_new_inode_and_block(mode | S_IFREG);
 	return add_entry_to_dir_inode(parent_inum, new_dir_name, 
 									new_inum, IS_FILE);
     //return SUCCESS;
@@ -610,7 +610,7 @@ static int fs_mkdir(const char *path, mode_t mode)
 		return parent_inum;
 	}
 	/* initialize a new dir inode */
-	new_inum = initialize_new_inode_and_block(mode);
+	new_inum = initialize_new_inode_and_block(mode | S_IFDIR);
 	//return SUCCESS;
 	return add_entry_to_dir_inode(parent_inum, new_dir_name, 
 									new_inum, IS_DIR);
@@ -661,14 +661,15 @@ int initialize_new_inode_and_block(mode_t mode) {
 	/* fetch the inode from inode number */
 	inode_ptr = get_inode_from_inum(inode_number);
 	/* set its attributes */
-	inode_ptr->uid = 1000;
-	inode_ptr->gid = 1000;
+	inode_ptr->uid = getuid();
+	inode_ptr->gid = getgid();
+	inode_ptr->mode = mode;
 	if (S_ISREG(mode)) {
-		inode_ptr->mode = (mode & 01777);
+		
 		inode_ptr->size = 0;
 	}
 	else {
-		inode_ptr->mode = (mode & 0040755);
+		//inode_ptr->mode = (mode & 0040755);
 		inode_ptr->size = FS_BLOCK_SIZE;
 	}
 	inode_ptr->ctime = time(NULL);
@@ -854,6 +855,29 @@ static int fs_rmdir(const char *path)
 	//return SUCCESS;
 }
 
+int validate_path_for_rename(const char *src_path, 
+	const char *dest_path, char** old_name, char** new_name) {
+
+	int type, src_parent_inum, found = 0, dest_parent_inum;
+	int rename_dir_inum;
+	src_parent_inum = validate_path_till_penultimate(src_path, old_name);
+	if (src_parent_inum < 0) 
+		return src_parent_inum;
+	dest_parent_inum = validate_path_till_penultimate(dest_path, new_name);
+	if (dest_parent_inum < 0) 
+		return dest_parent_inum;
+	if (src_parent_inum != dest_parent_inum)
+		return -EINVAL;
+	found = entry_exists_in_directory(src_parent_inum, *old_name, 
+						&type, &rename_dir_inum);
+	if (found == 0) {
+		/* The directory to rename does not exist, so error */
+		return -ENOENT;
+	}
+	return src_parent_inum;
+}
+
+
 /* rename - rename a file or directory
  * Errors - path resolution, ENOENT, EINVAL, EEXIST
  *
@@ -868,7 +892,13 @@ static int fs_rmdir(const char *path)
  */
 static int fs_rename(const char *src_path, const char *dst_path)
 {
-	//printf("\n DEBUG : fs_rename function called ");fflush(stdout);
+	char* old_name = NULL;
+	char* new_name = NULL;
+	int src_parent_inum = validate_path_for_rename(src_path, 
+	dst_path, &old_name, &new_name);
+	if (src_parent_inum < 0)
+		return src_parent_inum;
+	
     return -EOPNOTSUPP;
 }
 
