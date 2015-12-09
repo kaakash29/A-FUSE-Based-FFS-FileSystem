@@ -570,10 +570,6 @@ static int fs_mknod(const char *path, mode_t mode, dev_t dev)
 {
 	char* new_dir_name = NULL;
 	int new_inum = 0;
-	if (!S_ISREG(mode)) {
-		/* File type expected, ERROR */
-		return -EINVAL;
-	}
 	/* validate path and get the parent directory inode number */
 	int parent_inum = validate_path_for_new_create(path, &new_dir_name);
 	if (parent_inum < 0) {
@@ -599,10 +595,6 @@ static int fs_mkdir(const char *path, mode_t mode)
 {
 	char* new_dir_name = NULL;
 	int new_inum = 0;
-	//if (!(S_ISDIR(mode))) {
-		/* wrong mode */
-	//	exit(1);
-	//}
 	/* validate path and get the parent directory inode number */
 	int parent_inum = validate_path_for_new_create(path, &new_dir_name);
 	if (parent_inum < 0) {
@@ -665,16 +657,13 @@ int initialize_new_inode_and_block(mode_t mode) {
 	inode_ptr->gid = getgid();
 	inode_ptr->mode = mode;
 	if (S_ISREG(mode)) {
-		
 		inode_ptr->size = 0;
 	}
 	else {
-		//inode_ptr->mode = (mode & 0040755);
 		inode_ptr->size = FS_BLOCK_SIZE;
 	}
 	inode_ptr->ctime = time(NULL);
 	inode_ptr->mtime = time(NULL);
-	printf("\n DEBUG: inode_ptr->size =  = %d ", inode_ptr->size);
 	inode_ptr->direct[0] = (uint32_t) block_number;
 	inode_ptr->direct[1] = 0;
 	inode_ptr->direct[2] = 0;
