@@ -844,28 +844,74 @@ static int fs_rmdir(const char *path)
 	//return SUCCESS;
 }
 
+/* validate_path_for_rename : char*, char*, char**, char** -> int
+ * Returns the source directory parent inode number after 
+ * validating source and dest parent dir to be same, both
+ * being valid paths, and src exists, and dest does not exist 
+ * */
 int validate_path_for_rename(const char *src_path, 
 	const char *dest_path, char** old_name, char** new_name) {
-
 	int type, src_parent_inum, found = 0, dest_parent_inum;
 	int rename_dir_inum;
+	/* check whether src path is valid till penultimate */
 	src_parent_inum = validate_path_till_penultimate(src_path, old_name);
 	if (src_parent_inum < 0) 
 		return src_parent_inum;
+	/* check whether dest path is valid till penultimate */
 	dest_parent_inum = validate_path_till_penultimate(dest_path, new_name);
 	if (dest_parent_inum < 0) 
 		return dest_parent_inum;
+	/* check whether src path and dest path point to the same location */
 	if (src_parent_inum != dest_parent_inum)
 		return -EINVAL;
+	/* check whether src file/dir does not exist */
 	found = entry_exists_in_directory(src_parent_inum, *old_name, 
 						&type, &rename_dir_inum);
 	if (found == 0) {
-		/* The directory to rename does not exist, so error */
+		/* The src directory/file to rename does not exist, so error */
 		return -ENOENT;
 	}
+	/* check whether dest file/dir already exists */
+	found = 1;
+	found = entry_exists_in_directory(dest_parent_inum, *new_name, 
+						&type, &rename_dir_inum);
+	if (found == 1) {
+		/* The dest directory/file for rename exists, so error */
+		return -EEXIST;
+	}
+	/* return the src parent inode number */
 	return src_parent_inum;
 }
 
+/* update_entry_in_dir_inode : int, char*, char* -> int
+ * Updates the entry for old_name to new_name in entries list
+ * for parent_dir_inum inode number of directory, and writes
+ * to disk. 
+ * */
+int update_entry_in_dir_inode(int parent_dir_inum, char* old_name,
+	char* new_name) {
+	struct fs7600_dirent entry_list[32];
+	int i, found = 0;
+	get_dir_entries_from_dir_inum(parent_dir_inum, entry_list);
+	/* Check if entry is present in parent directory entry list */
+	for (i = 0; i < 32; i++) {
+		if ((entry_list[i].valid == 1) &&
+		 (strcmp(old_name, entry_list[i].name) == 0)) {
+			/* update the name field to the new value */
+			memcpy(&entry_list[i].name, new_name, 
+								sizeof(entry_list[i].name));
+			found = 1;
+			break;
+		}
+	}
+	if (found == 0) {
+		/* Entry not found, Error */
+		return -ENOENT;
+	}
+	/* write the changes to disk */
+	return write_dir_entries_to_disk_for_dir_inum(parent_dir_inum, 
+												entry_list);
+}
 
 /* rename - rename a file or directory
  * Errors - path resolution, ENOENT, EINVAL, EEXIST
@@ -885,10 +931,14 @@ static int fs_rename(const char *src_path, const char *dst_path)
 	char* new_name = NULL;
 	int src_parent_inum = validate_path_for_rename(src_path, 
 	dst_path, &old_name, &new_name);
-	if (src_parent_inum < 0)
+	if (src_parent_inum < 0) {
+		/* error */
 		return src_parent_inum;
-	
-    return -EOPNOTSUPP;
+	}
+	/* Update the entry for src dir/file in its parent directory
+	 * to the dest file/dir name */
+	return update_entry_in_dir_inode(src_parent_inum, 
+										old_name, new_name);
 }
 
 /* chmod - change file permissions
