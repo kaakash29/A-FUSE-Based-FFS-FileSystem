@@ -25,3 +25,19 @@ homework: misc.o $(FILE).o image.o
 
 clean: 
 	rm -f *.o homework $(TOOLS)
+	
+fs:
+	./mktest foo.img
+	
+start:
+	mkdir -p dir
+	./homework -d -s -image foo.img dir
+
+stop:
+	fusermount -u dir
+
+veryclean:
+	rm -rf foo.img dir
+	
+test:
+	./testscript.sh
