@@ -754,7 +754,7 @@ static int fs_truncate(const char *path, off_t len)
     
     for(i=1; i<numOfBlocks; i++)
 	{
-			unset_block_number(blocksList[i]);
+			clear_block_number(blocksList[i]);
 	}
 	
 	for (i =1; i < N_DIRECT; i++)
@@ -772,16 +772,6 @@ static int fs_truncate(const char *path, off_t len)
     return SUCCESS;
 }
 
-/* set_block_number : int -> int
- * Sets the bit block_num in block_map. */
-int unset_block_number(int block_num) {
-	FD_CLR(block_num, block_map);
-	if (disk->ops->write(disk, get_block_map_starting_block(), 
-					sb.block_map_sz, block_map) < 0)
-		/* error on write */
-        exit(1);
-	return SUCCESS;
-}
 
 /* unlink - delete a file
  *  Errors - path resolution, ENOENT, EISDIR
@@ -789,8 +779,37 @@ int unset_block_number(int block_num) {
  */
 static int fs_unlink(const char *path)
 {
+	int type, inum, numofBlocksInFile, parent_inum,i;
+	int* blocklist = NULL;
+	char *to_remove = NULL;
+	struct fs7600_inode *inode = NULL;
+	
 	printf("\n DEBUG : fs_unlink function called ");fflush(stdout);
-    return -EOPNOTSUPP;
+	
+	inum  = fs_translate_path_to_inum(path, &type);
+	
+	if (type == IS_DIR)
+			return -EISDIR;
+		
+	inode = get_inode_from_inum(inum);
+	
+	// unset all blocks for the inode
+	blocklist = getListOfBlocksOperate(inode, inode->size, 0, &numofBlocksInFile);
+	for(i=0; i<numofBlocksInFile; i++) 
+		clear_block_number(blocklist[i]);
+		
+	// remove inode entry from parent directory
+	parent_inum = validate_path_till_penultimate(path, &to_remove);
+	
+	if(parent_inum < 0)
+		return parent_inum;
+			
+	remove_entry_from_dir_inode(parent_inum, to_remove);
+	
+	// unset inode 
+	clear_inode_number(inum);
+	
+    return SUCCESS;
 }
 
 int validate_path_till_penultimate(const char* path, char** last_token) {
