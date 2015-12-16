@@ -70,6 +70,6 @@ create2 $D/dir1/filex3     583
 
 rm $D/dir2/file5
 rm $D/dir1/file6
-rm $D/dir1/file8
+rm $D/dir2/file8
 rm $D/dir2/file[234]
 

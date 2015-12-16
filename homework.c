@@ -1189,50 +1189,43 @@ int read_Data_From_File_Inode(struct fs7600_inode *inode, int len, off_t offset,
 static int fs_read(const char *path, char *buf, size_t len, off_t offset,
 		    struct fuse_file_info *fi)
 {
-	int type; // local variable to check the type of the input path
-	int inode_num; //local variable to hold the inoe number of the file
-	int file_size; //local variable to hold the size of a file on disk
+	int type; /* to check the type of file */
+	int inode_num; /* to hold the inode number of the file */
+	int file_size; /* to hold the size of a file on disk */
+	int bytes_read = 0;
 	struct fs7600_inode *inode = NULL;
 	
-	//printf("\n DEBUG : fs_read function called ");fflush(stdout);
-	//printf("\n DEBUG : Parameters for the READ --> PATH = %s REQ_LEN = %d OFFSET = %jd",path, len, (intmax_t)offset);
-	
 	inode_num = fs_translate_path_to_inum(path, &type);
-	
 	strcpy(buf, "");
-	
 	if (inode_num < 0) {
+		/* error */
 		return inode_num;
 	}
-		
 	if (type == IS_DIR) {
-			//trying to read a directory 
+			/* trying to read a directory 
+			 * ** ERROR ** */
 			return -EISDIR;
 	}
-		
+	/* get the inode for the file */
 	inode = get_inode_from_inum(inode_num);
-	
+	/* size of file */
 	file_size = inode->size;
-	
-	//printf("\n DEBUG : The size of the file is = %d",file_size);
-	
-	if (offset >= file_size ) {
-		return 0;
+	if (offset >= file_size) {
+		/* Trying to read from beyond the file size */
+		bytes_read = 0;
 	}
-	
 	else if (offset + len > file_size) {
-		// read all the bytes from start to EOF
-		read_Data_From_File_Inode(inode, file_size, 0, buf);
-		//printf("\n DEBUG : Buffer Read Here = %s", buf);
-		return file_size;
+		/* read all the bytes from offset to EOF */
+		read_Data_From_File_Inode(inode, file_size, offset, buf);
+		bytes_read = file_size - offset;
 	}
-	
 	else {
-		// read required number of bytes into the final character buffer
+		/* read required no of bytes into the character buffer */
 		read_Data_From_File_Inode(inode, len, offset, buf);
-		//printf("\n DEBUG : Buffer Read Here = %s", buf);
-		return len;
+		bytes_read = len;
 	}
+	/* return the number of bytes read */
+	return bytes_read;
 }
 
 /* getLastBlcokOfFileInode : 
@@ -1840,6 +1833,23 @@ static int fs_release(const char *path, struct fuse_file_info *fi)
     return 0;
 }
 
+/* get_free_block_count : int -> int
+ * Returns the number of blocks which are free in the file system */
+int get_free_block_count(int start_block) {
+	int block_count = sizeof(*block_map);
+	int free_count = 0;
+	int temp_block = start_block;
+	while (temp_block < block_count) {
+		//printf("\n Checking for block number %d \n", free_entry);
+		if (!(FD_ISSET(temp_block, block_map)))
+		{
+			free_count += 1;
+		}
+		temp_block ++;
+	}
+	return free_count;
+}
+
 /* statfs - get file system statistics
  * see 'man 2 statfs' for description of 'struct statvfs'.
  * Errors - none. 
@@ -1856,15 +1866,18 @@ static int fs_statfs(const char *path, struct statvfs *st)
      * this should work fine, but you may want to add code to
      * calculate the correct values later.
      */
-    
+    int data_blocks_start_block_number = 
+		get_inodes_region_starting_block() + sb.inode_region_sz;
     printf("\n DEBUG : fs_statfs function called ");fflush(stdout);
     st->f_bsize = FS_BLOCK_SIZE;
-    st->f_blocks = 0;           /* probably want to */
-    st->f_bfree = 0;            /* change these */
-    st->f_bavail = 0;           /* values */
+    /* to get value of f_blocks = total image - metadata */
+    st->f_blocks = sb.num_blocks - data_blocks_start_block_number + 1;
+    /* f_bfree = f_blocks - blocks used */
+    st->f_bfree = get_free_block_count(data_blocks_start_block_number);  
+    /* f_bavail = f_bfree */      
+    st->f_bavail = st->f_bfree;           
     st->f_namemax = 27;
-
-    return 0;
+    return SUCCESS;
 }
 
 /* operations vector. Please don't rename it, as the skeleton code in
