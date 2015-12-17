@@ -58,6 +58,7 @@ struct dir_entry_cache {
 	int child_inum; /* to store the entry's inode number */
 	int valid; /* to indicate whether valid */
 	int last_access_time;  /* to save the last access time */
+	int ftype;  /* the type of file */
 };
 
 struct path_cache path_cache_list[PATH_CACHE_SIZE];
@@ -293,10 +294,10 @@ int print_dir_entry_cache() {
 	}
 }
 
-/* fetch_entry_from_dir_entry_cache : int, char* -> int
+/* fetch_entry_from_dir_entry_cache : int, char*, int* -> int
  * Returns the mapped child inode number in cache for the directory 
  * entry of dir_inum for name if exists, else returns -1. */
-int fetch_entry_from_dir_entry_cache(int dir_inum, char* name) {
+int fetch_entry_from_dir_entry_cache(int dir_inum, char* name, int* ftype) {
 	int child_inode_number = -1, i;
 	for (i = 0; i < DIR_ENTRY_CACHE_SIZE; i++) {
 		if ((dir_entry_cache_list[i].valid == 1) && 
@@ -308,6 +309,7 @@ int fetch_entry_from_dir_entry_cache(int dir_inum, char* name) {
 			/* increse the access time for LRU implementation */
 			dir_entry_cache_list[i].last_access_time = 
 								++directory_entry_cache_access;
+			*ftype = dir_entry_cache_list[i].ftype;
 			break;
 		}
 	}
@@ -315,11 +317,11 @@ int fetch_entry_from_dir_entry_cache(int dir_inum, char* name) {
 	return child_inode_number;
 }
 
-/* replace_dir_cache_entry : int, char*, int, int -> int
+/* replace_dir_cache_entry : int, char*, int, int, int -> int
  * Replaces the entry in directory entry cache at index entry with
  * a mapping of dir_inum, name to child_inum */
 int replace_dir_cache_entry(int dir_inum, char* name, 
-								int child_inum, int entry) {
+							int child_inum, int entry, int ftype) {
 	/* mark the entry as valid */
 	dir_entry_cache_list[entry].valid = 1;
 	/* copy the name to the directory entry cache */
@@ -331,6 +333,7 @@ int replace_dir_cache_entry(int dir_inum, char* name,
 	dir_entry_cache_list[entry].parent_inum = dir_inum;
 	/* store the child inode number */
 	dir_entry_cache_list[entry].child_inum = child_inum;
+	dir_entry_cache_list[entry].ftype = ftype;
 	/* save the incremented access time */
 	dir_entry_cache_list[entry].last_access_time = 
 							++current_access_count;
@@ -341,7 +344,8 @@ int replace_dir_cache_entry(int dir_inum, char* name,
  * Adds the entry of [dir_inum, name] mapped to child_inum in the 
  * directory entry cache, after finding a free entry if it exists,
  * or replacing an existing entry by LRU. */
-int add_dir_entry_to_cache(int dir_inum, char* name, int child_inum) {
+int add_dir_entry_to_cache(int dir_inum, char* name, 
+								int child_inum, int ftype) {
 	/* check for free entry in cache, if found, then put
 	 * entry in that position
 	 * if not there, then replace the entry with least
@@ -364,7 +368,7 @@ int add_dir_entry_to_cache(int dir_inum, char* name, int child_inum) {
 	/* found the index to replace by LRU */
 	/* put the entry */
 	replace_dir_cache_entry(dir_inum, name, child_inum, 
-								index_to_replace);
+								index_to_replace, ftype);
 	print_dir_entry_cache();
 	return SUCCESS;
 }
