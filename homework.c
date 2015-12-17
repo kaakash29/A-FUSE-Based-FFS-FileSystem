@@ -369,6 +369,29 @@ int add_dir_entry_to_cache(int dir_inum, char* name, int child_inum) {
 	return SUCCESS;
 }
 
+/* invalidate_entry_in_dir_cache : int, char* -> int
+ * Invalidates the entry of [dir_inum, name] mapped to child_inum 
+ * in the directory entry cache, by setting the valid bit to 0. */
+int invalidate_entry_in_dir_cache(int dir_inum, char* name) {
+	/* Find the corresponding entry in dir_entry_cache
+	 * and set the valid bit to 0 */
+	int i;
+	for (i = 0; i < DIR_ENTRY_CACHE_SIZE; i++) {
+		if ((dir_entry_cache_list[i].valid == 1) && 
+			(dir_entry_cache_list[i].parent_inum == dir_inum) &&
+			(dir_entry_cache_list[i].child_name != NULL) && 
+			(strcmp(dir_entry_cache_list[i].child_name, name) == 0))
+		 {
+			/* matching entry found */
+			dir_entry_cache_list[i].valid = 0;
+			dir_entry_cache_list[i].child_name = NULL;
+			/* no need to search further */
+			break;
+		}
+	}
+	return SUCCESS;
+}
+
 /* fetch_entry_from_path_cache : char* -> int
  * Returns the mapped inode number in cache for the path if exists,
  * else returns -1. */
