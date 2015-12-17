@@ -292,6 +292,7 @@ int print_dir_entry_cache() {
 			dir_entry_cache_list[i].valid, dir_entry_cache_list[i].last_access_time);
 		}
 	}
+	printf("\n DEBUG : PRINTING DIR ENTRY CACHE --- DONE!!!!!---- \n");
 }
 
 /* fetch_entry_from_dir_entry_cache : int, char*, int* -> int
@@ -336,7 +337,7 @@ int replace_dir_cache_entry(int dir_inum, char* name,
 	dir_entry_cache_list[entry].ftype = ftype;
 	/* save the incremented access time */
 	dir_entry_cache_list[entry].last_access_time = 
-							++current_access_count;
+							++directory_entry_cache_access;
 	return SUCCESS;
 }
 
@@ -776,16 +777,36 @@ int entry_exists_in_directory(int dir_inum, char* entry,
 						int* ftype, int* inode) {
 	struct fs7600_dirent entry_list[32];
 	int found = 0, i;
-	/* read the listing of files from the parent directory */
-	get_dir_entries_from_dir_inum(dir_inum, &(entry_list[0]));
-	/* Check if entry is present in parent directory entry list */
-	for (i = 0; i < 32; i++) {
-		if ((entry_list[i].valid == 1) &&
-		 (strcmp(entry, entry_list[i].name) == 0)) {
-			*ftype = entry_list[i].isDir;
-			*inode = entry_list[i].inode;
+	int entry_inode = -1;
+	/* if directory entry caching is enabled */
+	if (homework_part > 2) {
+		/* fetch the entry from cache */
+		entry_inode = fetch_entry_from_dir_entry_cache(dir_inum, 
+													entry, ftype);
+		if (entry_inode > 0) {
+			/* entry exists */
 			found = 1;
-			break;
+			*inode = entry_inode;
+		}
+	}
+	if (found == 0) {
+		/* meaning that entry not found in cache, or no caching */
+		/* read the listing of files from the parent directory */
+		get_dir_entries_from_dir_inum(dir_inum, &(entry_list[0]));
+		/* Check if entry is present in parent directory entry list */
+		for (i = 0; i < 32; i++) {
+			if ((entry_list[i].valid == 1) &&
+			 (strcmp(entry, entry_list[i].name) == 0)) {
+				*ftype = entry_list[i].isDir;
+				*inode = entry_list[i].inode;
+				found = 1;
+				break;
+			}
+		}
+		if ((homework_part > 2) && (found == 1)) {
+			/* caching is enabled, but entry not present in cache, 
+			 * thus need to add to cache in LRU, for a valid entry */
+			add_dir_entry_to_cache(dir_inum, entry, *inode, *ftype);
 		}
 	}
 	return found;
@@ -931,7 +952,6 @@ int add_entry_to_dir_inode(int parent_dir_inum, char* name,
 			/* set for directory */
 			entry_list[i].isDir = isDir;
 			/* the inode number for directory/file */
-			//memcpy(&entry_list[i].inode, inum, sizeof(entry_list[i].inode));
 			entry_list[i].inode = (uint32_t) inum;
 			/* the name of directory */
 			memcpy(&entry_list[i].name, name, 
@@ -944,8 +964,15 @@ int add_entry_to_dir_inode(int parent_dir_inum, char* name,
 		/* No invalid entries found, directory full, Error */
 		return -ENOSPC;
 	}
-	return write_dir_entries_to_disk_for_dir_inum(parent_dir_inum, entry_list);
-	//return SUCCESS;
+	/* write the changed entries to disk */
+	if (write_dir_entries_to_disk_for_dir_inum(parent_dir_inum, entry_list) != SUCCESS)
+		exit(1);
+	if (homework_part > 2) {
+		/* add the new entry to directory entry cache */
+		add_dir_entry_to_cache(parent_dir_inum, name, inum, isDir);
+	}
+	/* return success */
+	return SUCCESS;
 }
 
 /* truncate - truncate file to exactly 'len' bytes
@@ -1109,9 +1136,16 @@ int remove_entry_from_dir_inode(int parent_dir_inum, char* name) {
 		/* Entry not found, Error */
 		return -ENOENT;
 	}
-	return write_dir_entries_to_disk_for_dir_inum(parent_dir_inum, 
-												entry_list);
-	//return SUCCESS;
+	/* write the modified entry list for the directory to disk */
+	if(write_dir_entries_to_disk_for_dir_inum(parent_dir_inum, 
+								entry_list) != SUCCESS)
+		exit(1);
+	if (homework_part > 2) {
+		/* caching is enabled, so need to invalidate the entry
+		 * if present in cache, in LRU method */
+		invalidate_entry_in_dir_cache(parent_dir_inum, name);
+	}										 
+	return SUCCESS;
 }
 
 /* rmdir - remove a directory
@@ -1203,8 +1237,19 @@ int update_entry_in_dir_inode(int parent_dir_inum, char* old_name,
 		return -ENOENT;
 	}
 	/* write the changes to disk */
-	return write_dir_entries_to_disk_for_dir_inum(parent_dir_inum, 
-												entry_list);
+	if(write_dir_entries_to_disk_for_dir_inum(parent_dir_inum, 
+								entry_list) != SUCCESS)
+		exit(1);
+	/* update the entry in directory entry cache is enabled */
+	if ((homework_part > 2) && (found > 0)) {
+		/* invalidate the old entry */
+		invalidate_entry_in_dir_cache(parent_dir_inum, old_name);
+		/* add the new entry to cache */
+		add_dir_entry_to_cache(parent_dir_inum, new_name, 
+		entry_list[i].inode, entry_list[i].isDir);
+	}
+	/* return success */
+	return SUCCESS;										
 }
 
 /* rename - rename a file or directory
