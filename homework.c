@@ -24,11 +24,14 @@
 #define IS_DIR 1
 #define IS_FILE 0
 #define PATH_CACHE_SIZE 20
+#define DIR_ENTRY_CACHE_SIZE 50
 
 
 int* getListOfBlocksOperate(struct fs7600_inode *inode, int len, 
 				off_t offset, int *numOfBlocksToread);
 int current_access_count = 0;  /* for LRU in path_cache */
+int directory_entry_cache_access = 0; 
+/* for LRU in directory entry cache */
 extern int homework_part; /* set by '-part n' command-line option */
 
 /* 
@@ -44,12 +47,21 @@ extern struct blkdev *disk;
 struct path_cache {
 	char* path;  /* path */
 	int inum;    /* inode number */
-	int last_access_time;
-	int valid;
-	
+	int last_access_time;	/* to save the last access time */
+	int valid;    /* to indicate whether valid */
+};
+
+/* structure for the directory entry cache */
+struct dir_entry_cache {
+	int parent_inum; /* to store the parent inode number */
+	char* child_name; /* to store the name of the entry in parent */
+	int child_inum; /* to store the entry's inode number */
+	int valid; /* to indicate whether valid */
+	int last_access_time;  /* to save the last access time */
 };
 
 struct path_cache path_cache_list[PATH_CACHE_SIZE];
+struct dir_entry_cache dir_entry_cache_list[DIR_ENTRY_CACHE_SIZE];
 
 /*
  * cache - you'll need to create a blkdev which "wraps" this one
@@ -266,6 +278,95 @@ char* remove_last_token(const char *path, char** last_token) {
 		return_string[strlen(return_string) - 1] = '\0';
 	}
 	return return_string;
+}
+
+int print_dir_entry_cache() {
+	int i;
+	printf("\n DEBUG : PRINTING DIR ENTRY CACHE\n");
+	for (i = 0; i < DIR_ENTRY_CACHE_SIZE; i++) {
+		if (dir_entry_cache_list[i].valid == 1) {
+			printf("\nCache entry: %d -- parent_inum = %d, Name = %s, child_inum = %d, valid = %d, last_access_time = %d", 
+			i, dir_entry_cache_list[i].parent_inum, dir_entry_cache_list[i].child_name, 
+			dir_entry_cache_list[i].child_inum, 
+			dir_entry_cache_list[i].valid, dir_entry_cache_list[i].last_access_time);
+		}
+	}
+}
+
+/* fetch_entry_from_dir_entry_cache : int, char* -> int
+ * Returns the mapped child inode number in cache for the directory 
+ * entry of dir_inum for name if exists, else returns -1. */
+int fetch_entry_from_dir_entry_cache(int dir_inum, char* name) {
+	int child_inode_number = -1, i;
+	for (i = 0; i < DIR_ENTRY_CACHE_SIZE; i++) {
+		if ((dir_entry_cache_list[i].valid == 1) && 
+			(dir_entry_cache_list[i].parent_inum == dir_inum) &&
+			(dir_entry_cache_list[i].child_name != NULL) && 
+			(strcmp(dir_entry_cache_list[i].child_name, name) == 0)) {
+			/* directory entry found in cache */
+			child_inode_number = dir_entry_cache_list[i].child_inum;
+			/* increse the access time for LRU implementation */
+			dir_entry_cache_list[i].last_access_time = 
+								++directory_entry_cache_access;
+			break;
+		}
+	}
+	print_dir_entry_cache();
+	return child_inode_number;
+}
+
+/* replace_dir_cache_entry : int, char*, int, int -> int
+ * Replaces the entry in directory entry cache at index entry with
+ * a mapping of dir_inum, name to child_inum */
+int replace_dir_cache_entry(int dir_inum, char* name, 
+								int child_inum, int entry) {
+	/* mark the entry as valid */
+	dir_entry_cache_list[entry].valid = 1;
+	/* copy the name to the directory entry cache */
+	dir_entry_cache_list[entry].child_name = (char*) malloc 
+									(sizeof(char) * strlen(name));
+	strcpy(dir_entry_cache_list[entry].child_name, name);
+	strcat(dir_entry_cache_list[entry].child_name, "\0");
+	/* store the directory inode number */
+	dir_entry_cache_list[entry].parent_inum = dir_inum;
+	/* store the child inode number */
+	dir_entry_cache_list[entry].child_inum = child_inum;
+	/* save the incremented access time */
+	dir_entry_cache_list[entry].last_access_time = 
+							++current_access_count;
+	return SUCCESS;
+}
+
+/* add_dir_entry_to_cache : int, char*, int -> int
+ * Adds the entry of [dir_inum, name] mapped to child_inum in the 
+ * directory entry cache, after finding a free entry if it exists,
+ * or replacing an existing entry by LRU. */
+int add_dir_entry_to_cache(int dir_inum, char* name, int child_inum) {
+	/* check for free entry in cache, if found, then put
+	 * entry in that position
+	 * if not there, then replace the entry with least
+	 * access time */
+	int minimum = dir_entry_cache_list[0].last_access_time;
+	int index_to_replace = 0, i;
+	for (i = 0; i < DIR_ENTRY_CACHE_SIZE; i++) {
+		if (dir_entry_cache_list[i].valid == 0) {
+			/* free entry found */
+			index_to_replace = i;
+			/* no need to search further */
+			break;
+		}
+		if (minimum >= dir_entry_cache_list[i].last_access_time) {
+			/* old accessed entry found */
+			minimum = dir_entry_cache_list[i].last_access_time;
+			index_to_replace = i;
+		}
+	}
+	/* found the index to replace by LRU */
+	/* put the entry */
+	replace_dir_cache_entry(dir_inum, name, child_inum, 
+								index_to_replace);
+	print_dir_entry_cache();
+	return SUCCESS;
 }
 
 /* fetch_entry_from_path_cache : char* -> int
@@ -916,7 +1017,6 @@ int validate_path_till_penultimate(const char* path, char** last_token) {
 	const char* stripped_path = remove_last_token(path, last_token);
 	/* get the inode number of the directory/file where to create the 
 	 * new directory from the stripped path */
-	stripped_path, strlen(stripped_path));
 	parent_inum = fs_translate_path_to_inum(stripped_path, &type);
 	if(type == IS_FILE) {
 		/* the penultimate token is not a directory */
