@@ -101,10 +101,8 @@ struct fs7600_inode inodes_list[INODES_PER_BLK][INODES_PER_BLK];
 struct fs7600_inode* get_inode_from_inum(int inode_number) {
 	/* Get the block number which contains the inode entry */
 	int disk_block = get_block_number_from_inum(inode_number);
-	printf("\n disk_block = %d \n", disk_block);
 	/* get the inode entry from the block */
 	int disk_block_entry = get_bl_inode_number_from_inum(inode_number);
-	printf("\n disk_block_entry = %d \n", disk_block_entry);
 	/* Return the address of the entry */
 	return &(inodes_list[disk_block][disk_block_entry]);
 }
@@ -286,6 +284,7 @@ int fetch_entry_from_path_cache(const char* path) {
 			break;
 		}
 	}
+	print_path_cache();
 	return inode_number;
 }
 
@@ -305,6 +304,18 @@ int replace_cache_entry(const char* path, int inum, int entry) {
 	/* save the incremented access time */
 	path_cache_list[entry].last_access_time = ++current_access_count;
 	return SUCCESS;
+}
+
+int print_path_cache() {
+	int i;
+	printf("\n DEBUG : PRINTING CACHE\n");
+	for (i = 0; i < PATH_CACHE_SIZE; i++) {
+		if (path_cache_list[i].valid == 1) {
+			printf("\nCache entry: %d -- Path = %s, inum = %d, valid = %d, last_access_time = %d", 
+			i, path_cache_list[i].path, path_cache_list[i].inum, 
+			path_cache_list[i].valid, path_cache_list[i].last_access_time);
+		}
+	}
 }
 
 /* add_path_to_cache : char*, int -> int
@@ -334,6 +345,7 @@ int add_path_to_cache(const char* path, int inum) {
 	/* found the index to replace by LRU */
 	/* put the entry */
 	replace_cache_entry(path, inum, index_to_replace);
+	print_path_cache();
 	return SUCCESS;
 }
 
@@ -353,7 +365,6 @@ static int fs_translate_path_to_inum(const char* path, int* type) {
 	if (path == NULL){
 		return -ENOENT;
 	}
-	printf ("\n DEBUG : Translation Path = %s", path);
 	fflush(stdout);fflush(stderr);
 	/* Assume that the path starts from the root. Thus the entry 
 	 *  should be present in the root inode's block
@@ -458,7 +469,6 @@ void* fs_init(struct fuse_conn_info *conn)
     int block_num_to_read = 0;
     if (disk->ops->read(disk, block_num_to_read, 1, &sb) < 0)
         exit(1);
-    printf("\n DEBUG : fs_init function called ");fflush(stdout);
     sb.magic = FS7600_MAGIC;
     
     /* Allocate memory for the inode and block bitmaps 
@@ -564,18 +574,12 @@ static int fs_readdir(const char *path, void *ptr, fuse_fill_dir_t filler,
 	int type, i;
 	struct fs7600_dirent entry_list[32];
 	struct stat sb;
-	//printf("\n DEBUG : fs_readdir function called ");fflush(stdout);
-	//printf("\n DEBUG : Trying to read path = %s",path); fflush(stdout);
 	if (homework_part > 1) {
 		inode_number = fi->fh;
 	}
 	else {
 		/* translate the path to the inode_number, if possible */
 		inode_number = fs_translate_path_to_inum(path, &type);
-		
-		//printf("\n DEBUG : Path %s Translated to inode %d of type %s", 
-		//path, inode_number, type == IS_DIR?"DIR":"FILE"); fflush(stdout);
-		
 		/* If path translation returned an error, then return the error */
 		if ((inode_number == -ENOENT) || (inode_number == -ENOTDIR))
 			return inode_number;
@@ -606,17 +610,14 @@ static int fs_opendir(const char *path, struct fuse_file_info *fi)
 	printf("\n DEBUG : fs_opendir function called ");fflush(stdout);
 	/* for part > 1 of homework, with path caching */
 	if (homework_part > 1) {
-		printf("\n DEBUG : homework > 1 ");fflush(stdout);
 		int inode_number = -1;
 		int type;
 		/* get the entry from path_cache if it exists */
 		inode_number = fetch_entry_from_path_cache(path);
-		printf("\n DEBUG : inode_number fetched from cache %d ", inode_number);fflush(stdout);
 		if (inode_number < 0) {
 			/* entry does not exist in path_cache */
 			/* translate the path to inode_number */
 			inode_number = fs_translate_path_to_inum(path, &type);
-			printf("\n DEBUG : inode_number fetched from fs_translate_path_to_inum %d ", inode_number);fflush(stdout);
 			if (inode_number < 0) {
 				/* error */
 				return inode_number;
@@ -625,26 +626,17 @@ static int fs_opendir(const char *path, struct fuse_file_info *fi)
 			if (type != IS_DIR) 
 				return -ENOTDIR;
 			/* add the entry to path_cache */
-			printf("\n DEBUG : adding inode to cache %d ", inode_number);fflush(stdout);
 			add_path_to_cache(path, inode_number);
 		}
 		/* save the inode_number to fuse_file_info structure */
-		printf("\n DEBUG : saving inode in fi %d ", inode_number);fflush(stdout);
-		fi = (struct fuse_file_info *) malloc (sizeof(struct fuse_file_info));
-		fi->fh = inode_number;
+		fi->fh = (uint64_t)inode_number;
 	}
-	printf("\n DEBUG : returning from opendir ");fflush(stdout);
-    return SUCCESS;
+	return SUCCESS;
 }
 
 static int fs_releasedir(const char *path, struct fuse_file_info *fi)
 {
 	printf("\n DEBUG : fs_released function called ");fflush(stdout);
-	if (homework_part > 1) {
-		fi = NULL;
-		//if (fi != NULL) 
-		//	free(fi);
-	}
     return 0;
 }
 
@@ -751,20 +743,16 @@ int initialize_new_inode_and_block(mode_t mode) {
 	struct fs7600_dirent entry_list[32];
 	/* get a free inode number */
 	int inode_number = get_free_inode_number();
-	printf("\n DEBUG: new inode number = %d \n", inode_number);
 	/* get a free block number */
 	int block_number = get_free_block_number();
-	printf("\n DEBUG: new block_number = %d \n", block_number);
 	if ((inode_number <= 0) || (block_number <= 0)) {
 		/* Error: no free inode number, no space 
 		 * No free blocks */
 		return -ENOSPC;
 	}
 	/* Set the bit in inode map to mark as allocated */
-	printf("\n DEBUG: set_inode_number called ");
 	set_inode_number(inode_number);
 	/* Set the bit in block map to mark as allocated */
-	printf("\n DEBUG: set_block_number called ");
 	set_block_number(block_number);
 	/* fetch the inode from inode number */
 	inode_ptr = get_inode_from_inum(inode_number);
@@ -928,10 +916,8 @@ int validate_path_till_penultimate(const char* path, char** last_token) {
 	const char* stripped_path = remove_last_token(path, last_token);
 	/* get the inode number of the directory/file where to create the 
 	 * new directory from the stripped path */
-	printf("\n DEBUG: mkdir stripped path = %s with size = %d\n", 
 	stripped_path, strlen(stripped_path));
 	parent_inum = fs_translate_path_to_inum(stripped_path, &type);
-	printf("\n DEBUG: Parent inum = %d to disk \n", parent_inum);
 	if(type == IS_FILE) {
 		/* the penultimate token is not a directory */
 		return -ENOTDIR;
@@ -1936,8 +1922,7 @@ static int fs_open(const char *path, struct fuse_file_info *fi)
 			add_path_to_cache(path, inode_number);
 		}
 		/* save the inode_number to fuse_file_info structure */
-		fi = (struct fuse_file_info *) malloc (sizeof(struct fuse_file_info));
-		fi->fh = inode_number;
+		fi->fh = (uint64_t)inode_number;
 	}
     return SUCCESS;
 }
@@ -1945,11 +1930,6 @@ static int fs_open(const char *path, struct fuse_file_info *fi)
 static int fs_release(const char *path, struct fuse_file_info *fi)
 {
 	printf("\n DEBUG : fs_release function called ");fflush(stdout);
-	if (homework_part > 1) {
-		//if (fi != NULL) 
-			//free(fi);
-		fi = NULL;
-	}
     return 0;
 }
 
