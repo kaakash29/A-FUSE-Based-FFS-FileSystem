@@ -566,21 +566,24 @@ static int fs_readdir(const char *path, void *ptr, fuse_fill_dir_t filler,
 	struct stat sb;
 	//printf("\n DEBUG : fs_readdir function called ");fflush(stdout);
 	//printf("\n DEBUG : Trying to read path = %s",path); fflush(stdout);
-	
-	/* translate the path to the inode_number, if possible */
-	inode_number = fs_translate_path_to_inum(path, &type);
-	
-	//printf("\n DEBUG : Path %s Translated to inode %d of type %s", 
-	//path, inode_number, type == IS_DIR?"DIR":"FILE"); fflush(stdout);
-	
-	/* If path translation returned an error, then return the error */
-	if ((inode_number == -ENOENT) || (inode_number == -ENOTDIR))
-		return inode_number;
+	if (homework_part > 1) {
+		inode_number = fi->fh;
+	}
+	else {
+		/* translate the path to the inode_number, if possible */
+		inode_number = fs_translate_path_to_inum(path, &type);
 		
-	/* If the path given is not for a directory, return error */
-	if (type != IS_DIR) 
-		return -ENOTDIR;
+		//printf("\n DEBUG : Path %s Translated to inode %d of type %s", 
+		//path, inode_number, type == IS_DIR?"DIR":"FILE"); fflush(stdout);
 		
+		/* If path translation returned an error, then return the error */
+		if ((inode_number == -ENOENT) || (inode_number == -ENOTDIR))
+			return inode_number;
+			
+		/* If the path given is not for a directory, return error */
+		if (type != IS_DIR) 
+			return -ENOTDIR;
+	}
 	/* If we have NOT errored out above then get the 
 	 * directory entries for this directory */
 	if (get_dir_entries_from_dir_inum(inode_number, entry_list) != SUCCESS)
@@ -618,6 +621,9 @@ static int fs_opendir(const char *path, struct fuse_file_info *fi)
 				/* error */
 				return inode_number;
 			}
+			/* If the path given is not for a directory, return error */
+			if (type != IS_DIR) 
+				return -ENOTDIR;
 			/* add the entry to path_cache */
 			printf("\n DEBUG : adding inode to cache %d ", inode_number);fflush(stdout);
 			add_path_to_cache(path, inode_number);
@@ -1283,7 +1289,6 @@ int read_Data_From_File_Inode(struct fs7600_inode *inode, int len,
 		return SUCCESS;	
 }
 
-
 /* read - read data from an open file.
  * should return exactly the number of bytes requested, except:
  *   - if offset >= file len, return 0
@@ -1300,16 +1305,21 @@ static int fs_read(const char *path, char *buf, size_t len, off_t offset,
 	int bytes_read = 0;
 	struct fs7600_inode *inode = NULL;
 	
-	inode_num = fs_translate_path_to_inum(path, &type);
-	strcpy(buf, "");
-	if (inode_num < 0) {
-		/* error */
-		return inode_num;
+	if (homework_part > 1) {
+		inode_num = fi->fh;
 	}
-	if (type == IS_DIR) {
-			/* trying to read a directory 
-			 * ** ERROR ** */
-			return -EISDIR;
+	else {
+		inode_num = fs_translate_path_to_inum(path, &type);
+		strcpy(buf, "");
+		if (inode_num < 0) {
+			/* error */
+			return inode_num;
+		}
+		if (type == IS_DIR) {
+				/* trying to read a directory 
+				 * ** ERROR ** */
+				return -EISDIR;
+		}
 	}
 	/* get the inode for the file */
 	inode = get_inode_from_inum(inode_num);
@@ -1916,6 +1926,11 @@ static int fs_open(const char *path, struct fuse_file_info *fi)
 			if (inode_number < 0) {
 				/* error */
 				return inode_number;
+			}
+			if (type == IS_DIR) {
+			/* trying to read a directory 
+			 * ** ERROR ** */
+			return -EISDIR;
 			}
 			/* add the netry to path_cache */
 			add_path_to_cache(path, inode_number);
