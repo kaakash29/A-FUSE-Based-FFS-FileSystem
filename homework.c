@@ -2054,7 +2054,7 @@ int write_bytes_to_disk(int inode_num,
 	/* filling local buf from buf and writing to disk */
 	i = start_write_loc; /* the index of local buf */
 	j = 0; /* the index of buf */
-	while (j < strlen(buf)) {
+	while (j < len/*strlen(buf)*/) {
 		local_buf[i] = buf[j];
 		j++;
 		i++;
