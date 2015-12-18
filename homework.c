@@ -166,8 +166,8 @@ int write_block_to_inode_region(int inode_number) {
 	int blnum = get_block_number_from_inum(inode_number);
 	/* get the actual corresponding block number on disk */
 	int actual_disk_block = get_inodes_region_starting_block() + blnum;
-	printf("\n DEBUG: Writing actual inode block = %d to disk \n", 
-	actual_disk_block);
+	/*printf("\n DEBUG: Writing actual inode block = %d to disk \n", 
+	actual_disk_block);*/
 	/* write the block to disk */
 	if (disk->ops->write(disk, actual_disk_block, 1, 
 					&inodes_list[blnum]) < 0)
@@ -307,10 +307,13 @@ int print_dir_entry_cache() {
 	printf("\n DEBUG : PRINTING DIR ENTRY CACHE\n");
 	for (i = 0; i < DIR_ENTRY_CACHE_SIZE; i++) {
 		if (dir_entry_cache_list[i].valid == 1) {
-			printf("\nCache entry: %d -- parent_inum = %d, Name = %s, child_inum = %d, valid = %d, last_access_time = %d", 
-			i, dir_entry_cache_list[i].parent_inum, dir_entry_cache_list[i].child_name, 
+			printf("\nCache entry: %d -- parent_inum = %d, Name = %s, \
+			child_inum = %d, valid = %d, last_access_time = %d", 
+			i, dir_entry_cache_list[i].parent_inum, 
+			dir_entry_cache_list[i].child_name, 
 			dir_entry_cache_list[i].child_inum, 
-			dir_entry_cache_list[i].valid, dir_entry_cache_list[i].last_access_time);
+			dir_entry_cache_list[i].valid, 
+			dir_entry_cache_list[i].last_access_time);
 		}
 	}
 	printf("\n DEBUG : PRINTING DIR ENTRY CACHE --- DONE!!!!!---- \n");
@@ -319,7 +322,8 @@ int print_dir_entry_cache() {
 /* fetch_entry_from_dir_entry_cache : int, char*, int* -> int
  * Returns the mapped child inode number in cache for the directory 
  * entry of dir_inum for name if exists, else returns -1. */
-int fetch_entry_from_dir_entry_cache(int dir_inum, char* name, int* ftype) {
+int fetch_entry_from_dir_entry_cache(int dir_inum, 
+							char* name, int* ftype) {
 	int child_inode_number = -1, i;
 	for (i = 0; i < DIR_ENTRY_CACHE_SIZE; i++) {
 		if ((dir_entry_cache_list[i].valid == 1) && 
@@ -335,7 +339,7 @@ int fetch_entry_from_dir_entry_cache(int dir_inum, char* name, int* ftype) {
 			break;
 		}
 	}
-	print_dir_entry_cache();
+	/*print_dir_entry_cache();*/
 	return child_inode_number;
 }
 
@@ -391,7 +395,7 @@ int add_dir_entry_to_cache(int dir_inum, char* name,
 	/* put the entry */
 	replace_dir_cache_entry(dir_inum, name, child_inum, 
 								index_to_replace, ftype);
-	print_dir_entry_cache();
+	/*print_dir_entry_cache();*/
 	return SUCCESS;
 }
 
@@ -434,7 +438,7 @@ int fetch_entry_from_path_cache(const char* path) {
 			break;
 		}
 	}
-	print_path_cache();
+	/*print_path_cache();*/
 	return inode_number;
 }
 
@@ -461,9 +465,11 @@ int print_path_cache() {
 	printf("\n DEBUG : PRINTING CACHE\n");
 	for (i = 0; i < PATH_CACHE_SIZE; i++) {
 		if (path_cache_list[i].valid == 1) {
-			printf("\nCache entry: %d -- Path = %s, inum = %d, valid = %d, last_access_time = %d", 
+			printf("\nCache entry: %d -- Path = %s, inum = %d, \
+			 valid = %d, last_access_time = %d", 
 			i, path_cache_list[i].path, path_cache_list[i].inum, 
-			path_cache_list[i].valid, path_cache_list[i].last_access_time);
+			path_cache_list[i].valid, 
+			path_cache_list[i].last_access_time);
 		}
 	}
 }
@@ -495,7 +501,7 @@ int add_path_to_cache(const char* path, int inum) {
 	/* found the index to replace by LRU */
 	/* put the entry */
 	replace_cache_entry(path, inum, index_to_replace);
-	print_path_cache();
+	/*print_path_cache();*/
 	return SUCCESS;
 }
 
@@ -757,7 +763,7 @@ static int fs_readdir(const char *path, void *ptr, fuse_fill_dir_t filler,
  */
 static int fs_opendir(const char *path, struct fuse_file_info *fi)
 {
-	printf("\n DEBUG : fs_opendir function called ");fflush(stdout);
+	//printf("\n DEBUG : fs_opendir function called ");fflush(stdout);
 	/* for part > 1 of homework, with path caching */
 	if (homework_part > 1) {
 		int inode_number = -1;
@@ -786,8 +792,7 @@ static int fs_opendir(const char *path, struct fuse_file_info *fi)
 
 static int fs_releasedir(const char *path, struct fuse_file_info *fi)
 {
-	printf("\n DEBUG : fs_released function called ");fflush(stdout);
-    return 0;
+	return 0;
 }
 
 /* entry_exists_in_directory : int, char*, int*, int* -> int
@@ -986,7 +991,8 @@ int add_entry_to_dir_inode(int parent_dir_inum, char* name,
 		return -ENOSPC;
 	}
 	/* write the changed entries to disk */
-	if (write_dir_entries_to_disk_for_dir_inum(parent_dir_inum, entry_list) != SUCCESS)
+	if (write_dir_entries_to_disk_for_dir_inum(parent_dir_inum, entry_list)
+					!= SUCCESS)
 		exit(1);
 	if (homework_part > 2) {
 		/* add the new entry to directory entry cache */
@@ -1012,40 +1018,26 @@ static int fs_truncate(const char *path, off_t len)
     int *blocksList = NULL;
     int type = 0;
     int i;
-    
     if (len != 0)
 			return -EINVAL;		/* invalid argument */
-    
     strcpy(emptBuf, "");
-     
-    printf("\n DEBUG : fs_truncate function called ");fflush(stdout); 
-    
+    //printf("\n DEBUG : fs_truncate function called ");fflush(stdout); 
     inum = fs_translate_path_to_inum(path, &type);
-    
     if(inum < 0)
 		return inum;
-	
 	inode = get_inode_from_inum(inum);
-	
     blocksList = getListOfBlocksOperate(inode, inode->size, 0, &numOfBlocks);
-    
     for(i=1; i<numOfBlocks; i++)
 	{
 			clear_block_number(blocksList[i]);
 	}
-	
 	for (i =1; i < N_DIRECT; i++)
 		inode->direct[i] = 0;
-	
 	inode->indir_1 = 0;
 	inode->indir_2 = 0;
-	
 	update_Block_Wid_Buf(inode, inum, inode->direct[0], emptBuf);
-	
 	inode->size = 0;
-	
 	write_block_to_inode_region(inum);
-    
     return SUCCESS;
 }
 
@@ -1516,10 +1508,8 @@ static int fs_read(const char *path, char *buf, size_t len, off_t offset,
 	else if (offset + len > file_size) {
 		/* read all the bytes from offset to EOF */
 		//read_Data_From_File_Inode(inode, file_size, offset, buf);
-		
 		traverse_inode_to_read (file_size, offset, inode, tempbuf);
 		strcpy(buf, tempbuf);		
-		//printf("\n DEBUG : The buffer read n this way is = %s",buf); fflush(stdout);
 		bytes_read = file_size - offset;
 	}
 	else {
@@ -1528,21 +1518,12 @@ static int fs_read(const char *path, char *buf, size_t len, off_t offset,
 		char* finalbuf = NULL;
 		int offsetInBlock = 0;
 		char* buf = NULL;
-		
 		traverse_inode_to_read (len, offset, inode, tempbuf);
-		
 		finalbuf = (char*) malloc(sizeof(char) * (len+offset));
-		
 		offsetInBlock = offset % FS_BLOCK_SIZE;
-		
 		strncpy(finalbuf, tempbuf + offsetInBlock, len);
-		
 		finalbuf[len] = '\0';
-		
 		strcpy(buf, finalbuf);
-		
-		//printf("\n DEBUG : The buffer read n this way is = %s",buf); fflush(stdout);
-		
 		bytes_read = len;
 	}
 	/* return the number of bytes read */
@@ -1566,21 +1547,21 @@ int traverse_inode_to_read (int len, off_t offset, struct fs7600_inode *inode, c
 	int i, j;
 	
 	startingIndex = (int)offset/FS_BLOCK_SIZE;
-	printf("\n DEBUG : The starting index to start traversal is = ..%d, ",startingIndex);
+	//printf("\n DEBUG : The starting index to start traversal is = ..%d, ",startingIndex);
 	
 	offset_in_block = offset % FS_BLOCK_SIZE;
-	printf("\n DEBUG : offset from the starting block = %d", offset_in_block);
+	//printf("\n DEBUG : offset from the starting block = %d", offset_in_block);
 	
 	numOfBlocksReqd = buffersize = (int)((len - offset_in_block)/FS_BLOCK_SIZE) + 1;
 	
-	printf("\n DEBUG : Number of Blocks Required = %d",numOfBlocksReqd);
+	//printf("\n DEBUG : Number of Blocks Required = %d",numOfBlocksReqd);
 		
 	backupbuf = buf ; 	// We are increasing the pointer in the code so
 						// keeping a backup of original pointer
 						
 	// buffersize is also the number of block required to read the buffer
 	if(inode == NULL) {
-		printf("NULL inode received ");
+		//printf("NULL inode received ");
 		return 0;
 	}
 	
@@ -1594,10 +1575,10 @@ int traverse_inode_to_read (int len, off_t offset, struct fs7600_inode *inode, c
 		if ((current_index >= startingIndex) && 
 			(numOfBlocksReqd != 0))
 		{
-			printf(" \n CurrentIndex is grater than the statingIndex ");
+			/*printf(" \n CurrentIndex is grater than the statingIndex ");
 			printf(" \n Still more blocks are required to be read ");
 			
-			printf("\n DEBUG : Reading the Block NUmber = %d", inode->direct[i]);
+			printf("\n DEBUG : Reading the Block NUmber = %d", inode->direct[i]);*/
 			if(disk->ops->read(disk, inode->direct[i], 1, &tempbuf) < 0)
 				exit(1);
 			
@@ -1630,10 +1611,10 @@ int traverse_inode_to_read (int len, off_t offset, struct fs7600_inode *inode, c
 		if ((current_index >= startingIndex) && 
 			(numOfBlocksReqd != 0))
 		{
-			printf(" \n CurrentIndex is grater than the statingIndex ");
+			/*printf(" \n CurrentIndex is grater than the statingIndex ");
 			printf(" \n Still more blocks are required to be read in Indirect block 2");
 			
-			printf("\n DEBUG : Reading the Block NUmber = %d", indirect1[i]);
+			printf("\n DEBUG : Reading the Block NUmber = %d", indirect1[i]);*/
 			if(disk->ops->read(disk, indirect1[i], 1, &tempbuf) < 0)
 				exit(1);
 			
@@ -1692,143 +1673,8 @@ int traverse_inode_to_read (int len, off_t offset, struct fs7600_inode *inode, c
 return SUCCESS;
 }
 
-
-/* getLastBlcokOfFileInode : 
- * Returns the last block for a file inode. 
- * Comsumes the inode of the file. 
- * */
-int getLastBlcokOfFileInode(struct fs7600_inode *inode)
-{
-			int *blockslist = NULL;
-			int *tempblocksList = NULL;
-			int filesize;
-			int lastBlock;
-			int numOfBlocksToread;
-			filesize = inode->size;
-			blockslist = getListOfBlocksOperate(inode, filesize, 
-						0, &numOfBlocksToread);
-			tempblocksList = (int *)malloc(numOfBlocksToread * 
-						sizeof(int));
-			memcpy(tempblocksList, blockslist, sizeof(int) + 
-						numOfBlocksToread);
-			lastBlock = tempblocksList[numOfBlocksToread - 1];
-			return lastBlock;
-}
-
-
-
-
 #define TRUE 1
 #define FALSE 0
-
-/* addBlockNumber2Inode: blocknum inode -> int TRUE/FALSE
- * traverses over all the blocks of an inode and adds the new block 
- * entry at the end.
- * */
-void addBlockNumber2Inode(int blockNum, struct fs7600_inode *inode){
-
-	int filesize;
-	int* readBlocksList = NULL;
-	int indir1blocks[256];
-	int count;
-	int i;
-	int numberOfBlocks;
-	int blockPlaced = FALSE;
-	
-	filesize = inode->size;
-	
-	numberOfBlocks = filesize / FS_BLOCK_SIZE;
-	
-	if ((filesize % FS_BLOCK_SIZE) != 0) {
-		numberOfBlocks = numberOfBlocks + 1;
-	}
-	
-	i = 0;
-	while(i < numberOfBlocks)
-	{
-		//1. Direct POinter Range 
-		if (i < 6) {
-			
-			if (inode->direct[i] == 0) {
-				inode->direct[i] = blockNum;
-				break;
-			}
-			i = i + 1;
-			continue;
-		}
-			
-		//2. First indirection pointer reading
-		else if ((i > 6) && (i < 256)) {
-			
-				if (disk->ops->read(disk, inode->indir_1, 1, 
-							&indir1blocks) < 0)
-					exit(1);
-				
-				for(count = 0 ; count < 256; count++) {
-					// if empty block was found 
-					if (indir1blocks[i] == 0) {
-						// update the block with new number 
-						indir1blocks[i] = blockNum;
-						int blockPlaced  = TRUE;
-						break;
-					}
-				}
-				
-				if (blockPlaced == TRUE)
-				{
-					if (disk->ops->write(disk, inode->indir_1, 1, 
-								&indir1blocks) < 0)
-						exit(1);
-				} 
-				else 
-				{
-					i = i + 256;		
-				}
-				
-			}
-			
-		//3. Second level indirection pointer reading
-		else {
-				int tempBlocksList[256];
-				int tempBlocksList2[256];
-				
-				if (disk->ops->read(disk, inode->indir_2, 1, 
-							&tempBlocksList) < 0)
-					exit(1);
-				
-				for(i = 0; i < 256 ; i++)
-				{
-					if (disk->ops->read(disk, tempBlocksList[i], 1, 
-								&tempBlocksList2) < 0)
-						exit(1);
-					
-					for(count = 0 ; count < 256; count++) 
-					{
-							
-						if (tempBlocksList2[count] == 0) {
-							tempBlocksList2[count] = blockNum;
-							int blockPlaced = TRUE;
-						}
-											
-						if (blockPlaced == TRUE)
-						{
-							if (disk->ops->write(disk, 
-							tempBlocksList[i], 1, &tempBlocksList2) < 0)
-								exit(1);
-							break;
-						} 
-						else 
-						{
-							i = i + 256;		
-						}
-					}
-				
-				if (blockPlaced == TRUE)
-					break;
-			}	
-		}
-	}
-}
 
 void printInode(int inodenum) {
 	
@@ -1845,16 +1691,19 @@ void printInode(int inodenum) {
 				printf("%d \t",inode->direct[i]);
 			}		
 			printf("\n INDIRECT BLOCK NUMBERS = ");
-			if (disk->ops->read(disk, inode->indir_1, 1, &indir1blocks) < 0)
+			if (disk->ops->read(disk, inode->indir_1, 1, 
+							&indir1blocks) < 0)
 					exit(1);
 			for(i = 0; i < 256; i++) {
 				printf("%d \t",indir1blocks[i]);
 			}
 			printf("\n INDIRECT 2 BLOCK NUMBERS = ");
-			if (disk->ops->read(disk, inode->indir_2, 1, &indir1blocks) < 0)
+			if (disk->ops->read(disk, inode->indir_2, 1, 
+							&indir1blocks) < 0)
 					exit(1);
 			for(i = 0; i < 256; i++) {
-					if (disk->ops->read(disk, indir1blocks[i], 1, &indir2blocks) < 0)
+					if (disk->ops->read(disk, indir1blocks[i], 1, 
+							&indir2blocks) < 0)
 						exit(1);
 					for(i = 0 ; i < 6; i++) {
 							printf("%d \t",indir2blocks[i]);
@@ -1862,36 +1711,6 @@ void printInode(int inodenum) {
 			}	
 	}
 }
-
-
-/* writeBufToBlockList:
- * Consumes alist and buf and writes 
- * */
-int writeBufToBlockList(struct fs7600_inode *inode, int inodenum,
-						int *list, char *buf, int listlen)
-{
-	char tempbuf[1024];
-	int length;
-	int i;
-	length = strlen(buf);
-		
-	if(length > FS_BLOCK_SIZE)
-	{
-		strncpy(tempbuf, buf, FS_BLOCK_SIZE);
-		tempbuf[FS_BLOCK_SIZE] = '\0';
-		strncpy(buf, buf + FS_BLOCK_SIZE, length - FS_BLOCK_SIZE);
-	}
-	else
-	{
-		strcpy(tempbuf, buf);
-	}
-	
-	for(i = 0 ; i < listlen ; i++) {
-		update_Block_Wid_Buf(inode, inodenum, list[i], tempbuf);
-	}
-	return 0;
-}
-
 
 int get_starting_block_index(off_t offset) {
 	int start_index = (int)offset / FS_BLOCK_SIZE;
@@ -1985,7 +1804,8 @@ int get_level_index_for_blk(int blkindex, char* level, int inum, int* blknm) {
 		}
 		else {
 			/* level 1 already present */
-			if (disk->ops->read(disk, level_1_block, 1, &indir1blocks) < 0)
+			if (disk->ops->read(disk, level_1_block, 1, 
+						&indir1blocks) < 0)
 				exit(1);
 		}
 		block_num = indir1blocks[rel_index];
@@ -2003,16 +1823,19 @@ int get_level_index_for_blk(int blkindex, char* level, int inum, int* blknm) {
 			}
 			else if (level[0] == '1') {
 				indir1blocks[rel_index] = block_num;
-				if (disk->ops->write(disk, inode->indir_1, 1, &indir1blocks) < 0)
+				if (disk->ops->write(disk, inode->indir_1, 1, 
+							&indir1blocks) < 0)
 					exit(1);
 			}
 			else {
 				/* need to write for indir 2 lower level */
 				indir1blocks[rel_index] = block_num;
-				if (disk->ops->write(disk, level_1_block, 1, &indir1blocks) < 0)
+				if (disk->ops->write(disk, level_1_block, 1, 
+							&indir1blocks) < 0)
 					exit(1);
 				/* need to write for indir 2 upper level */
-				if (disk->ops->write(disk, inode->indir_2, 1, &indir2blocks) < 0)
+				if (disk->ops->write(disk, inode->indir_2, 1, 
+							&indir2blocks) < 0)
 					exit(1);
 			}
 		}
@@ -2026,7 +1849,8 @@ int get_blocknum_from_blkindex(int blkindex, int inum) {
 	int block_num;
 	struct fs7600_inode *inode = NULL;
 	char level[2] = {'\0'};
-	int rel_index = get_level_index_for_blk(blkindex, level, inum, &block_num);
+	int rel_index = get_level_index_for_blk(blkindex, level, 
+				inum, &block_num);
 	return block_num;
 }
 
@@ -2046,8 +1870,7 @@ int write_bytes_to_disk(int inode_num,
 	int block_num = 0, k;
 	struct fs7600_inode *inode = NULL;
 	inode = get_inode_from_inum(inode_num);
-	
-	printf("\n DEBUG : Size = %d", inode->size);
+
 	/* get the block number to start */
 	block_num = get_blocknum_from_blkindex(block_index, inode_num);
 	/* read the first block */
@@ -2068,7 +1891,8 @@ int write_bytes_to_disk(int inode_num,
 				exit(1);
 			block_index++;
 			/* get the next block num to write to */
-			block_num = get_blocknum_from_blkindex(block_index, inode_num);
+			block_num = get_blocknum_from_blkindex(block_index, 
+						inode_num);
 			i = 0; /* reset the index to 0 */
 			/* clear the local buf */
 			for (k = 0; k < FS_BLOCK_SIZE; k++)
@@ -2145,11 +1969,10 @@ int update_Block_Wid_Buf(struct fs7600_inode *inode, int inodenum,
 
 
 
-//-------------------------------------------------------------------------
-
+//---------------------------------------------------------------------
 static int fs_open(const char *path, struct fuse_file_info *fi)
 {
-	printf("\n DEBUG : fs_open function called ");fflush(stdout);
+	//printf("\n DEBUG : fs_open function called ");fflush(stdout);
 	/* for part > 1 of homework, with path caching */
 	if (homework_part > 1) {
 		int inode_number = -1;
@@ -2180,7 +2003,7 @@ static int fs_open(const char *path, struct fuse_file_info *fi)
 
 static int fs_release(const char *path, struct fuse_file_info *fi)
 {
-	printf("\n DEBUG : fs_release function called ");fflush(stdout);
+	//printf("\n DEBUG : fs_release function called ");fflush(stdout);
     return 0;
 }
 
@@ -2191,7 +2014,6 @@ int get_free_block_count(int start_block) {
 	int free_count = 0;
 	int temp_block = start_block;
 	while (temp_block < block_count) {
-		//printf("\n Checking for block number %d \n", free_entry);
 		if (!(FD_ISSET(temp_block, block_map)))
 		{
 			free_count += 1;
@@ -2219,7 +2041,7 @@ static int fs_statfs(const char *path, struct statvfs *st)
      */
     int data_blocks_start_block_number = 
 		get_inodes_region_starting_block() + sb.inode_region_sz;
-    printf("\n DEBUG : fs_statfs function called ");fflush(stdout);
+    //printf("\n DEBUG : fs_statfs function called ");fflush(stdout);
     st->f_bsize = FS_BLOCK_SIZE;
     /* to get value of f_blocks = total image - metadata */
     st->f_blocks = sb.num_blocks - data_blocks_start_block_number + 1;
