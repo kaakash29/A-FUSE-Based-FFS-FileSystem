@@ -40,4 +40,4 @@ veryclean:
 	rm -rf foo.img dir
 	
 test:
-	./testscript.sh
+	python test.py
