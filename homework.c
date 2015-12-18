@@ -34,6 +34,8 @@ int* getListOfBlocksOperate(struct fs7600_inode *inode, int len,
 int current_access_count = 0;  /* for LRU in path_cache */
 int directory_entry_cache_access = 0; 
 /* for LRU in directory entry cache */
+int wrt_bck_cache_access_time = 0;  /* for LRU impl for 
+										write back cache */
 extern int homework_part; /* set by '-part n' command-line option */
 
 /* 
@@ -78,6 +80,148 @@ struct write_back_cache write_bk_cln_cache[WRITE_BK_CLN_CACHE_SIZE];
 /* to save the list of dirty pages in cache */
 struct write_back_cache write_bk_drty_cache[WRITE_BK_DRTY_CACHE_SIZE];
 
+/* fetch_entry_from_clean_wrt_bck_cache : int -> int
+ * Returns the cache index for the block number blknum if 
+ * found in write back clean cache, otherwise -1. */
+int fetch_entry_from_clean_wrt_bck_cache(int blknum) {
+	int i;
+	int cache_entry = -1;
+	for (i = 0; i < WRITE_BK_CLN_CACHE_SIZE; i++) {
+		if ((write_bk_cln_cache[i].valid == 1) && 
+		(write_bk_cln_cache[i].block_num == blknum)) {
+			/* block found in cache, no need to go to disk */
+			cache_entry = i;
+			/* increse the access time for LRU implementation */
+			write_bk_cln_cache[i].last_access_time = 
+								++wrt_bck_cache_access_time;
+			break;
+		}
+	}
+	return cache_entry;
+}
+
+int add_entry_to_clean_wrt_bck_cache(int blknum, char* buf) {
+	/* check for free entry in cache, if found, then put
+	 * entry in that position
+	 * if not there, then replace the entry with least
+	 * access time */
+	int minimum = write_bk_cln_cache[0].last_access_time;
+	int index_to_replace = 0, i;
+	for (i = 0; i < WRITE_BK_CLN_CACHE_SIZE; i++) {
+		if (write_bk_cln_cache[i].valid == 0) {
+			/* free entry found */
+			index_to_replace = i;
+			/* no need to search further */
+			break;
+		}
+		if (minimum >= write_bk_cln_cache[i].last_access_time) {
+			/* old accessed entry found */
+			minimum = write_bk_cln_cache[i].last_access_time;
+			index_to_replace = i;
+		}
+	}
+	/* found the index to replace by LRU */
+	/* put the entry */
+	replace_clean_wrt_bck_cache_entry(blknum, buf, index_to_replace);
+	/*print_dir_entry_cache();*/
+	return SUCCESS;
+}
+
+/* replace_clean_wrt_bck_cache_entry : int, char*, int -> int
+ * Replaces the entry in write_bk_cln_cache at index entry with
+ * blknum and buf */
+int replace_clean_wrt_bck_cache_entry(int blknum, char* buf, int entry) {
+	/* mark the entry as valid */
+	write_bk_cln_cache[entry].valid = 1;
+	/* copy the path to the cache */
+	/*path_cache_list[entry].path = (char*) malloc 
+									(sizeof(char) *);*/
+	memcpy(&write_bk_cln_cache[entry].block, buf, FS_BLOCK_SIZE);
+	//strcpy(write_bk_cln_cache[entry].block, buf);
+	//strcat(write_bk_cln_cache[entry].block, "\0");
+	/* store the inode number */
+	write_bk_cln_cache[entry].block_num = blknum;
+	/* save the incremented access time */
+	write_bk_cln_cache[entry].last_access_time = 
+							++wrt_bck_cache_access_time;
+	return SUCCESS;
+}
+/* fetch_entry_from_dirty_wrt_bck_cache : int -> int
+ * Returns the cache index for the block number blknum if 
+ * found in write back dirty cache, otherwise -1. */
+int fetch_entry_from_dirty_wrt_bck_cache(int blknum) {
+	int i;
+	int cache_entry = -1;
+	for (i = 0; i < WRITE_BK_DRTY_CACHE_SIZE; i++) {
+		if ((write_bk_drty_cache[i].valid == 1) && 
+		(write_bk_drty_cache[i].block_num == blknum)) {
+			/* block found in cache, no need to go to disk */
+			cache_entry = i;
+			/* increse the access time for LRU implementation */
+			write_bk_drty_cache[i].last_access_time = 
+								++wrt_bck_cache_access_time;
+			break;
+		}
+	}
+	return cache_entry;
+}
+
+int add_entry_to_dirty_wrt_bck_cache(int blknum, char* buf) {
+	/* check for free entry in cache, if found, then put
+	 * entry in that position
+	 * if not there, then replace the entry with least
+	 * access time */
+	int minimum = write_bk_drty_cache[0].last_access_time;
+	int index_to_replace = 0, i;
+	for (i = 0; i < WRITE_BK_DRTY_CACHE_SIZE; i++) {
+		if (write_bk_drty_cache[i].valid == 0) {
+			/* free entry found */
+			index_to_replace = i;
+			/* no need to search further */
+			break;
+		}
+		if (minimum >= write_bk_drty_cache[i].last_access_time) {
+			/* old accessed entry found */
+			minimum = write_bk_drty_cache[i].last_access_time;
+			index_to_replace = i;
+		}
+	}
+	/* found the index to replace by LRU */
+	/* put the entry */
+	replace_dirty_wrt_bck_cache_entry(blknum, buf, index_to_replace);
+	/*print_dir_entry_cache();*/
+	return SUCCESS;
+}
+
+/* replace_dirty_wrt_bck_cache_entry : int, char*, int -> int
+ * Replaces the entry in write_bk_drty_cache at index entry with
+ * blknum and buf */
+int replace_dirty_wrt_bck_cache_entry(int blknum, char* buf, int entry) {
+	/* mark the entry as valid */
+	if (write_bk_drty_cache[entry].valid == 1) {
+		/* need to write to disk, as replacing a dirty page which
+		 * is a valid one */
+		 if (disk->ops->write(disk, write_bk_drty_cache[entry].block_num, 
+					1, write_bk_drty_cache[entry].block) < 0)
+				/* error on write */
+				exit(1);
+	}
+	write_bk_drty_cache[entry].valid = 1;
+	/* copy the path to the cache */
+	/*path_cache_list[entry].path = (char*) malloc 
+									(sizeof(char) *);*/
+	memcpy(&write_bk_drty_cache[entry].block, buf, FS_BLOCK_SIZE);
+	//strcpy(write_bk_cln_cache[entry].block, buf);
+	//strcat(write_bk_cln_cache[entry].block, "\0");
+	/* store the inode number */
+	write_bk_drty_cache[entry].block_num = blknum;
+	/* save the incremented access time */
+	write_bk_drty_cache[entry].last_access_time = 
+							++wrt_bck_cache_access_time;
+	return SUCCESS;
+}
+
+
 /*
  * cache - you'll need to create a blkdev which "wraps" this one
  * and performs LRU caching with write-back.
@@ -89,6 +233,7 @@ int cache_nops(struct blkdev *dev)
 }
 int cache_read(struct blkdev *dev, int first, int n, void *buf)
 {
+	
     return SUCCESS;
 }
 int cache_write(struct blkdev *dev, int first, int n, void *buf)
