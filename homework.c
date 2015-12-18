@@ -175,12 +175,14 @@ int get_bl_inode_number_from_inum(int inode_number) {
 int get_free_block_number() {
 	int block_count = sizeof(*block_map);
 	int free_entry = 0;
-	while (free_entry < block_count) {
-		if (!(FD_ISSET(free_entry, block_map)))
+	int index = 0;
+	while (index < block_count) {
+		if (!(FD_ISSET(index, block_map)))
 		{
+			free_entry = index; 
 			break;
 		}
-		free_entry ++;
+		index ++;
 	}
 	return free_entry;
 }
@@ -212,12 +214,14 @@ int clear_block_number(int block_num) {
 int get_free_inode_number() {
 	int inode_count = sizeof(*inode_map);
 	int free_entry = 0;
-	while (free_entry < inode_count) {
-		if (!(FD_ISSET(free_entry, inode_map)))
+	int index = 0;
+	while (index < inode_count) {
+		if (!(FD_ISSET(index, inode_map)))
 		{
+			free_entry = index;
 			break;
 		}
-		free_entry ++;
+		index ++;
 	}
 	return free_entry;
 }
@@ -1701,6 +1705,203 @@ int writeBufToBlockList(struct fs7600_inode *inode, int inodenum,
 }
 
 
+int get_starting_block_index(off_t offset) {
+	int start_index = (int)offset / FS_BLOCK_SIZE;
+	return start_index;
+}
+
+int get_starting_block_write_location(off_t offset) {
+	int start_location = (int)offset % FS_BLOCK_SIZE;
+	return start_location;
+}
+
+/* get_level_index_for_blk : int, char* -> int
+ * Returns the relative index and level for the exact level (direct, 
+ * indir1 or indir2) for the given blkindex */
+int get_level_index_for_blk(int blkindex, char* level, int inum, int* blknm) {
+	struct fs7600_inode *inode = NULL;
+	int direct_count = 6;
+	int indir_1_count = 256;
+	int indir_2_count = (256 * 256);
+	int rel_index, level_block_num_to_allocate = 0, rel_2_index;
+	int level_1_block, level1_index;
+	int block_num;
+	int indir1blocks[256] = {0};
+	int indir2blocks[256] = {0};
+	inode = get_inode_from_inum(inum);
+	
+	if (blkindex < direct_count) {
+		rel_index = blkindex;
+		block_num = inode->direct[rel_index];
+		level[0] = 'D';
+	}
+	else if (blkindex < (indir_1_count + direct_count)) {
+		level[0] = '1';  /* indicating indirect level 1 */
+		/* read the array of 256 entries if block for 
+		 * indir1 is already allocated */
+		if (inode->indir_1 > 0) {
+			if (disk->ops->read(disk, inode->indir_1, 1, &indir1blocks) < 0)
+				exit(1);
+		}
+		else {
+			/* allocate block for indir1 level */
+			level_block_num_to_allocate = 0;
+			level_block_num_to_allocate = get_free_block_number();
+			if (level_block_num_to_allocate > 0) /* free block found */
+			{
+				inode->indir_1 = level_block_num_to_allocate;
+				set_block_number(level_block_num_to_allocate);
+			}
+		}
+		/* to index into indirect block count */
+		rel_index = blkindex - direct_count;
+		block_num = indir1blocks[rel_index];
+	}
+	else {
+		level[0] = '2';
+		if (inode->indir_2 > 0) {
+			/* already allocated indir2 */
+			if (disk->ops->read(disk, inode->indir_2, 1, &indir2blocks) < 0)
+				exit(1);
+		}
+		else {
+			/* allocate block for indir2 level */
+			level_block_num_to_allocate = 0;
+			level_block_num_to_allocate = get_free_block_number();
+			if (level_block_num_to_allocate > 0) /* free block found */
+			{
+				inode->indir_2 = level_block_num_to_allocate;
+				set_block_number(level_block_num_to_allocate);
+			}
+		}
+		/* to index into indirect block count */
+		rel_2_index = blkindex - (direct_count + indir_1_count);
+		/* index to page for actual block */
+		level1_index = (int)rel_2_index / 256;
+		if (rel_2_index == 0) {
+			rel_index = 0;
+		}
+		else 
+			rel_index = rel_2_index % 256;  /* index to actual block */
+		//block_index -= (direct_count + indir_1_count);
+		level_1_block = indir2blocks[level1_index];
+		if (level_1_block == 0) {
+			/* allocate the first block in level 2 of indir2 */
+			level_block_num_to_allocate = 0;
+			level_block_num_to_allocate = get_free_block_number();
+			if (level_block_num_to_allocate > 0) /* free block found */
+			{
+				indir2blocks[level1_index] = level_block_num_to_allocate;
+				set_block_number(level_block_num_to_allocate);
+			}
+		}
+		else {
+			/* level 1 already present */
+			if (disk->ops->read(disk, level_1_block, 1, &indir1blocks) < 0)
+				exit(1);
+		}
+		block_num = indir1blocks[rel_index];
+	}
+	if (block_num <= 0) /* need to allocate the block */
+	{	
+		level_block_num_to_allocate = 0;
+		level_block_num_to_allocate = get_free_block_number();
+		if (level_block_num_to_allocate > 0) /* free block found */
+		{
+			block_num = level_block_num_to_allocate;
+			set_block_number(level_block_num_to_allocate);
+			if (level[0] == 'D') {
+				inode->direct[rel_index] = block_num;
+			}
+			else if (level[0] == '1') {
+				indir1blocks[rel_index] = block_num;
+				if (disk->ops->write(disk, inode->indir_1, 1, &indir1blocks) < 0)
+					exit(1);
+			}
+			else {
+				/* need to write for indir 2 lower level */
+				indir1blocks[rel_index] = block_num;
+				if (disk->ops->write(disk, level_1_block, 1, &indir1blocks) < 0)
+					exit(1);
+				/* need to write for indir 2 upper level */
+				if (disk->ops->write(disk, inode->indir_2, 1, &indir2blocks) < 0)
+					exit(1);
+			}
+		}
+	}
+	write_block_to_inode_region(inum);
+	*blknm = block_num;
+	return rel_index;
+}
+
+int get_blocknum_from_blkindex(int blkindex, int inum) {
+	int block_num;
+	struct fs7600_inode *inode = NULL;
+	char level[2] = {'\0'};
+	int rel_index = get_level_index_for_blk(blkindex, level, inum, &block_num);
+	return block_num;
+}
+
+/* write_bytes_to_disk : int, char*, size_t, off_t -> int 
+ * Writes the data in buf of size len, from offset to file with 
+ * inode* as given. 
+ * Returns the number of bytes written to disk */
+int write_bytes_to_disk(int inode_num, 
+			const char *buf, size_t len, off_t offset) {
+	/* starting block index to start writing in file */
+	int block_index = get_starting_block_index(offset);
+	int start_block_index = block_index, i = 0, j = 0;
+	char local_buf[FS_BLOCK_SIZE] = {'\0'};
+	char last_buf[FS_BLOCK_SIZE] = {'\0'};
+	/* write location is starting block */
+	int start_write_loc = get_starting_block_write_location(offset);
+	int block_num = 0, k;
+	struct fs7600_inode *inode = NULL;
+	inode = get_inode_from_inum(inode_num);
+	
+	printf("\n DEBUG : Size = %d", inode->size);
+	/* get the block number to start */
+	block_num = get_blocknum_from_blkindex(block_index, inode_num);
+	/* read the first block */
+	if (disk->ops->read(disk, block_num, 1, local_buf) < 0)
+		exit(1);
+	
+	/* filling local buf from buf and writing to disk */
+	i = start_write_loc; /* the index of local buf */
+	j = 0; /* the index of buf */
+	while (j < strlen(buf)) {
+		local_buf[i] = buf[j];
+		j++;
+		i++;
+		if ((i % FS_BLOCK_SIZE) == 0) /* 1 page size data is ready */
+		{
+			/* write local_buf to disk */			
+			if (disk->ops->write(disk, block_num, 1, local_buf) < 0)
+				exit(1);
+			block_index++;
+			/* get the next block num to write to */
+			block_num = get_blocknum_from_blkindex(block_index, inode_num);
+			i = 0; /* reset the index to 0 */
+			/* clear the local buf */
+			for (k = 0; k < FS_BLOCK_SIZE; k++)
+				local_buf[k] = '\0';
+		}
+	}
+	/* read the last block to write to */
+	if (disk->ops->read(disk, block_num, 1, last_buf) < 0)
+		exit(1);
+	memcpy(last_buf, local_buf, strlen(local_buf));
+	/* write the last block to disk */
+	if (disk->ops->write(disk, block_num, 1, last_buf) < 0)
+		exit(1);
+	
+	/* update the size of file */
+	inode->size += len;
+	/* write the inode */
+	write_block_to_inode_region(inode_num);
+	return len;
+}
+
 /* write - write data to a file
  * It should return exactly the number of bytes requested, except on
  * error.
@@ -1712,340 +1913,30 @@ int writeBufToBlockList(struct fs7600_inode *inode, int inodenum,
 static int fs_write(const char *path, const char *buf, size_t len,
 		     off_t offset, struct fuse_file_info *fi)
 {
+	
 	struct fs7600_inode *inode = NULL;
-	int  inodenum, filesize, numOfBlocsInFile, i, blocksReqd, length;
-	int  *blocklist = NULL;
-	int  *reqdBlocklist = NULL;
-	char *megabuf = NULL;
-	char *f = NULL;
-	char *e = NULL;
-	int  *tempblocklist= NULL;
-	int type;
-	int startingIndex = 0;
-	
-	printf("\n DEBUG : fs_write is called with following parameters");
-	printf("\n Name = %s", path);
-	printf("\n BUffer to insert of length = %d",strlen(buf));
-	printf("\n len ie numb of bytes axpected = %d",len);
-	printf("\n offset for insertion = %jd",(intmax_t)offset);
-	printf("\n and some fuse information structure  ....... ");
-	
-	
-	// get the inode number from the path
-	inodenum = fs_translate_path_to_inum(path, &type);
-	
-	// Check for path resolution errors
-	if (inodenum < 0)
-		return inodenum;
-	
-	inode = get_inode_from_inum(inodenum);
-	filesize = inode->size;
-	
-	// get list of all blocks in file
-	tempblocklist = blocklist = getListOfBlocksOperate(inode, 
-					filesize, 0, &numOfBlocsInFile);
-	
-	printf("\n DEBUG : Total number of blocks in file = %d",numOfBlocsInFile);
-		
-	// manipulate list to start from block drom where writing is required 
-	startingIndex = (int)(offset / FS_BLOCK_SIZE);
-	
-	printf("\n DEBUG : Starting index of blocks from offset = %d",startingIndex);
-
-	tempblocklist = blocklist = blocklist + startingIndex;
-
-	numOfBlocsInFile = numOfBlocsInFile - startingIndex;
-	
-	printf("\n DEBUG : Number of blocksleft in Blocklist = %d",numOfBlocsInFile);
-		
-	megabuf = (char*)malloc(sizeof(char) * (numOfBlocsInFile * FS_BLOCK_SIZE));
-		
-	strcpy(megabuf, "");	
-	
-	offset = offset % FS_BLOCK_SIZE;
-	
-	printf("\n DEBUG : Offset from starting block");
-	
-	// Read teh data present in all blocks in blockslist 
-	for (i = 0; i < numOfBlocsInFile; i++) 
-	{
-		char tempbuf[FS_BLOCK_SIZE];
-		strcpy(tempbuf, "");
-
-		if (disk->ops->read(disk, *(blocklist++), 1, &tempbuf) < 0)
-			exit(1);
-			
-		strcat(megabuf, tempbuf);
+	int i, type, inode_num;
+	int bytes_written = 0;
+	inode_num = fs_translate_path_to_inum(path, &type);
+	if (inode_num < 0) {
+		/* error */
+		return inode_num;
 	}
-		
-	// insert buf at the correct index inside megabuf 
-	length = strlen(megabuf);
-	
-	printf("\n DEBUG : Length of the megabuffer is = %d",length);
-	printf("\n DEBUG : Offset for insertion into buffer is = %jd",(intmax_t)offset);
-	printf("\n Length to be written in buffer is = %d", strlen(buf));
-	
-	printf("\n increase megabuf to length = %d",(length + strlen(buf)));
-	
-	megabuf = (char *)realloc(megabuf, (length + strlen(buf) + 1)  * sizeof(char));
-		
-	f = (char*)malloc(sizeof(char) * offset);
-	strcpy(f, "");
-	e = (char*)malloc(sizeof(char) * length - offset);
-	strcpy(e, "");
-	
-		
-	strncpy(f, megabuf, offset);      
-	f[offset] = '\0';
-	
-	strncpy(e, megabuf + offset, length-offset);
-	e[length-offset] = '\0';
-	
-	strcpy(megabuf, "");
-	strcat(megabuf, f);	
-	strcat(megabuf, buf);
-	strcat(megabuf, e);
-	
-	megabuf[(length + strlen(buf))] = '\0';
-	
-	printf("\n DEBUG : Length of the megabuffer is = %d",strlen(megabuf));
-	printf("\n DEBUG : Size of megabuf = %d",sizeof(megabuf));
-	
-	/* write the new megabuf into the list of blocks FS_FILE_SIZE 
-	 * bytes at a time */
-	blocksReqd = (int)strlen(megabuf)/FS_BLOCK_SIZE;
-	
-	if ((strlen(megabuf) % FS_BLOCK_SIZE) != 0)
-		blocksReqd = blocksReqd + 1;
-	
-	blocksReqd = blocksReqd - numOfBlocsInFile;
-	
-	printf("\n DEBUG : Number of blocks reqd to write this data = %d",blocksReqd);
-	printf("\n DEBUG : Number of blocks already in file = %d", numOfBlocsInFile);
-	
-	printf("\n DEBUG : Filling the buffers already present in file ... ");
-	writeBufToBlockList(inode, inodenum, tempblocklist, megabuf, numOfBlocsInFile);
-		
-	if(blocksReqd > 0) {
-		// seek 
-		megabuf = megabuf + FS_BLOCK_SIZE * numOfBlocsInFile;
-		printf("\n megabuf size after writing to block existing = %d",strlen(megabuf));
-		
-		reqdBlocklist = (int *)malloc(sizeof(int) * blocksReqd);
-		
-		for(i = 0; i < blocksReqd; i++) {
-			reqdBlocklist[i] = get_free_block_number();
-			set_block_number(reqdBlocklist[i]);
-		}	
-		// Fill Blocks With Buffer
-		printf("\n DEBUG : Filling the buffers NOT present in file ... ");
-		writeBufToBlockList(inode, inodenum, reqdBlocklist, megabuf, blocksReqd);
-	
-		printf("\n DEBUG : Trying to fill the inode with reqd blockslist... ");
-		writeReqdBlocks2Inode(reqdBlocklist, blocksReqd, inode, offset, numOfBlocsInFile);
+	if (type == IS_DIR) {
+			/* trying to write a directory 
+			 * ** ERROR ** */
+			return -EISDIR;
 	}
-
-	inode->size = inode->size + len;
-	write_block_to_inode_region(inodenum);	
-    return len;
-}
-
-
-/* createIndrectionWithEmptyList :
- * Allocates an empty block and writes an array of 
- * all zeros to it 
- * Returns the new block number 
- * */
-int createIndrectionWithEmptyList()
-{
-	int templist[256] = {0};
-	int blk_number;
-	blk_number = get_free_block_number();
-	set_block_number(blk_number);
-
-	if(disk->ops->write(disk, blk_number, 1, templist) < 0)
-		exit(1);
-
-	return blk_number;
-}
-
-
-/* write2newIndir1Block : 
- * Allocates a new block and writes the list 
- * required nodes to that block then adds this block to 
- * indir1 in inode
- * */
-int write2newIndir1Block(struct fs7600_inode *inode, int *list, 
-					int *numofblocksReqd)	
-{
-	int tempBlockList[256] = {0};
-	int i;
-	
-	inode->indir_1 = createIndrectionWithEmptyList();
-	
-	for (i = 0 ; ((i < 256) && (*numofblocksReqd > 0)); i++)
-	{
-		tempBlockList[i] = *(list++);
-		--(*numofblocksReqd);
+	/* get the inode for the file */
+	inode = get_inode_from_inum(inode_num);
+	/* size of file */
+	if (offset > inode->size) {
+		/* Trying to write beyond the file size 
+		 * No support for holes in file */
+		return -EINVAL;
 	}
-	
-	if (disk->ops->write(disk, inode->indir_1, 1, tempBlockList) < 0)
-			exit(1);
-	
-	return SUCCESS;
-}
-
-/* write2newIndir2Block : 
- * Allocates a new block and writes the list 
- * creates more sub-blocks if required
- * writes the new block to inode->indir_2
- * */
-int write2newIndir2Block(struct fs7600_inode *inode, int *list, 
-						int *numofblocksReqd)
-{
-	int i;
-	int tempIndir1List[256] = {0};
-	
-	inode->indir_2 = createIndrectionWithEmptyList();
-	
-	for(i = 0 ; i < 256 ; i++)
-	{
-		int tempIndir2List[256] = {0};
-		tempIndir1List[i] = createIndrectionWithEmptyList();
-		
-		for(i = 0 ; ((i < 256) && (*numofblocksReqd > 0)) ; i++) 
-		{
-			tempIndir2List[i] = *(list++);
-			--(*numofblocksReqd);
-		}
-		if(disk->ops->write(disk, tempIndir1List[i], 1, 
-					tempIndir2List) < 0)
-			exit(1);
-	}
-	if(disk->ops->write(disk, inode->indir_2, 1, tempIndir1List) < 0)
-		exit(1);
-	
-	return SUCCESS;
-}
-
-
-/* writeStartingDirectBlocks : 
- * Start writing with direct blocks 
- * keep allocating new pointers when you rub out of space.
- * */
-int writeStartingDirectBlocks(struct fs7600_inode *inode, int *list,  int *numofblocksReqd, int lastBlockIndex)
-{
-		int i;
-		for(i = lastBlockIndex + 1; ((i < N_DIRECT) && (*numofblocksReqd > 0)) ; i++) {
-			inode->direct[i] = *(list++);
-			--(*numofblocksReqd);
-		}
-		if(*numofblocksReqd > 0) {
-			write2newIndir1Block(inode, list, numofblocksReqd);
-		}
-		if(*numofblocksReqd > 0) {
-			write2newIndir2Block(inode, list, numofblocksReqd);
-		}
-		
-	return SUCCESS;
-}
-
-/* writeStartingIndir1Blocks : 
- * Start writing from indir1 block and keep adding new 
- * pointers when required
- * */
-int writeStartingIndir1Blocks(struct fs7600_inode *inode, int *list,  
-				int *numofblocksReqd, int lastBlockIndex)
-{
-	int i;
-	int indir1list[256] = {0};
-	printf("\n DEBUg : file ends in indir1 blocks");
-	if (disk->ops->read(disk, inode->indir_1, 1, indir1list))
-		exit(1);
-	for(i = lastBlockIndex + 1 ; ((i < 256) && 
-							(*numofblocksReqd > 0)); i++)
-	{
-		indir1list[i] = *(list++);
-		--(*numofblocksReqd);
-	}
-	
-	if (disk->ops->write(disk, inode->indir_1, 1, indir1list) < 0)
-		exit(1);
-	if(*numofblocksReqd > 0) 
-	{
-			write2newIndir2Block(inode, list, numofblocksReqd);
-	}
-	return SUCCESS;
-}
-
-/* writeStartingIndir2Blocks : 
- * Start writing from indir2 blocks and error out if no more 
- * space is required to be written but this check shud have
- * been made earlier in fs_write
- * */
-int writeStartingIndir2Blocks(struct fs7600_inode *inode, int *list,  
-					int *numofblocksReqd, int lastBlockIndex) 
-{
-	int i, currindex, j;
-	int indir2list[256] = {0};
-	printf("\n DEBUG : file ends in indir2 blocks");
-	disk->ops->read(disk, inode->indir_2, 1, indir2list);
-	currindex = 256 + 6 - 1;
-	for(i = 0; i < 256; i++)
-	{
-			int indir2list_2[256] = {0};
-			if(disk->ops->read(disk, indir2list[i], 1, indir2list_2) < 0)
-				exit(1);
-			for(j = 0; ((j < 256) && (*numofblocksReqd > 0))  ; j++) 
-			{	
-				if (currindex > lastBlockIndex)
-				{
-					indir2list_2[j] = *(list++);
-					--(*numofblocksReqd);
-					currindex = currindex + 1;
-				}
-			}
-			if(disk->ops->write(disk, indir2list[i], 1, indir2list_2) < 0)
-				exit(1);
-	}
-	if(disk->ops->write(disk, inode->indir_2, 1, indir2list) < 0)
-			exit(1);
-	return SUCCESS;
-}
-
-
-/* allocateReqdBlocks:
- * Take the list of blocks to be allocated newly and start writing the 
- * list of blocks to the inode
- * */
-int allocateReqdBlocks(struct fs7600_inode *inode, int* list, 
-						int listlen, int lastblockindex)
-{
-	int numofblocksReqd = listlen;
-	printf("\n DEBUG : Trying to write to required blocks to ");
-	if(lastblockindex < N_DIRECT) 
-		writeStartingDirectBlocks(inode, list,  &numofblocksReqd, 
-						lastblockindex);
-	else if ((lastblockindex > 6) && (lastblockindex < 256))
-		writeStartingIndir1Blocks(inode, list, &numofblocksReqd, 
-						lastblockindex);
-	else if(lastblockindex > 256)
-		writeStartingIndir2Blocks(inode, list, &numofblocksReqd, 
-						lastblockindex);
-	return SUCCESS;
-}
-
-/* writeReqdBlocks2Inode :
- * Stub forcalling the writing function 
- * */
-int writeReqdBlocks2Inode(int* reqdBlockList, int numBlkReqd, 
-	struct fs7600_inode *inode, off_t offset, int numOfBlocsInFile)
-{
-	int startingBlockIndex, lastBlockIndex;
-	startingBlockIndex = offset / FS_BLOCK_SIZE;
-	lastBlockIndex = startingBlockIndex + numOfBlocsInFile;
-	allocateReqdBlocks(inode, reqdBlockList, numBlkReqd, 
-				lastBlockIndex);	
+	bytes_written = write_bytes_to_disk(inode_num, buf, len, offset);
+	return bytes_written;
 }
 
 
