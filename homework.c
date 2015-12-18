@@ -25,6 +25,8 @@
 #define IS_FILE 0
 #define PATH_CACHE_SIZE 20
 #define DIR_ENTRY_CACHE_SIZE 50
+#define WRITE_BK_CLN_CACHE_SIZE 30
+#define WRITE_BK_DRTY_CACHE_SIZE 10
 
 
 int* getListOfBlocksOperate(struct fs7600_inode *inode, int len, 
@@ -61,8 +63,20 @@ struct dir_entry_cache {
 	int ftype;  /* the type of file */
 };
 
+/* to implement write-back cache  */
+struct write_back_cache {
+	int block_num;  /* the block number */
+	char block[FS_BLOCK_SIZE]; /* the entire page */
+	int valid;  /* to indicate whether this is a valid page in memory */
+	int last_access_time;  /* to save the last access time */
+};
+
 struct path_cache path_cache_list[PATH_CACHE_SIZE];
 struct dir_entry_cache dir_entry_cache_list[DIR_ENTRY_CACHE_SIZE];
+/* to save the list of clean pages in cache */
+struct write_back_cache write_bk_cln_cache[WRITE_BK_CLN_CACHE_SIZE];
+/* to save the list of dirty pages in cache */
+struct write_back_cache write_bk_drty_cache[WRITE_BK_DRTY_CACHE_SIZE];
 
 /*
  * cache - you'll need to create a blkdev which "wraps" this one
