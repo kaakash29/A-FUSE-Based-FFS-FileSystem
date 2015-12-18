@@ -187,7 +187,9 @@ int get_bl_inode_number_from_inum(int inode_number) {
 /* get_free_block_number: -> int
  * Returns a free block number, if possible, otherwise 0. */
 int get_free_block_number() {
-	int block_count = sizeof(*block_map);
+	//int block_count = sizeof(*block_map);
+	int block_count = sb.num_blocks;
+	//int block_count = (sb.block_map_sz * FS_BLOCK_SIZE)/sizeof(block_map);
 	int free_entry = 0;
 	int index = 0;
 	while (index < block_count) {
@@ -227,6 +229,7 @@ int clear_block_number(int block_num) {
  * Returns a free inode number, if possible, otherwise 0. */
 int get_free_inode_number() {
 	int inode_count = sizeof(*inode_map);
+	//int inode_count = (sb.inode_map_sz * FS_BLOCK_SIZE)/sizeof(inode_map);
 	int free_entry = 0;
 	int index = 0;
 	while (index < inode_count) {

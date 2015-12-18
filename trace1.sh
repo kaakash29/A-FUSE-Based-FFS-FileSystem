@@ -49,7 +49,7 @@ create $D/dir3/file11    319
 create $D/dir3/file12  32021
 
 cat $D/dir1/file1 > /dev/null
-cat $D/dir1/file2 > /dev/null
+#cat $D/dir1/file2 > /dev/null
 cat $D/dir2/file1 > /dev/null
 create2 $D/dir1/filex1    1064
 
@@ -58,10 +58,10 @@ cat $D/dir2/file2 > /dev/null
 cat $D/dir2/file3 > /dev/null
 create2 $D/dir2/filex1     319
 
-cat $D/dir3/* > /dev/null
+#cat $D/dir3/* > /dev/null
 create $D/dir3/filex1   32021
 
-cat $D/dir1/file[3-8] > /dev/null
+#cat $D/dir1/file[3-8] > /dev/null
 create2 $D/dir1/filex2    2427
 
 rm -rf $D/dir3
