@@ -41,3 +41,7 @@ veryclean:
 	
 test:
 	python test.py
+
+coverage:
+	
+	

@@ -137,20 +137,40 @@ def tests():
 	test_sizes("dir/largefile.txt")												#35
 	
 	check_file_size("dir/file.A", str(len(execute("cat dir/file.A"))))			#36
+	test ("cat dir", ": Is a directory");
 	
-	
-	test("rm -f dir/file.C/file.A", "")						#37
+	test("rm -f dir/file.C/file.A", "")											#37
 	test("rm -f dir/file.A", "")												#38
 	test("rm -f dir/dir1/", "rm: cannot remove")								#39
 	test("rm -f dir/file.A", "")												#41
 	test("rm -f dir/mediumfile.txt", "")										#42
 	test("rm -f dir/largefile.txt", "")											#43
-	test("trancate --size 0 dir/dir1/file.0", "")								#44
+	test("truncate --size 0 dir/dir1/file.0", "")								#44
 	test("truncate --size 0 dir/dir1/", "truncate: cannot open")				#45
 	test("truncate --size 20 dir/file.A", "truncate: failed to truncate")		#47
 	test("truncate --size 0 dir/file.A", "")
+	test("ls dir/fdljskfdjf", "No such file or directory")
+	test("touch dir/touch/dir.txt", "No such file or directory")
+	test("mkdir dir/tv/di9", "No such file or directory")
+	test("truncate --size 0 dir/ABABABABABA/file.0", "No such file or directory")
+	test("rm dir/dir1/dffdfdfdfddfds", "No such file or directory")
+	test("rm dir/dir1",  "Is a directory")
+	test("rm dir/RESFDFSAS/dir1","No such file or director")
+	test("mv dir/file.A/XYZ dir/SAY/Y", "Not a directory")
+	test("rmdir dir/FFZ/file.A", "No such file or directory")
+	test("mv dir1/fdskfjs dir1/DDSJ" , "No such file or directory")
+	test("mv dir1/file.A dir1/DDSJ" , "No such file or directory")
+	test("mv dir1/DDSJ dir1/file.A" , "No such file or directory")
+	test("rm dir/largefile.txt", "")
+	test("truncate --size 0 dir/mediumfile.txt","")
+	test(" \rm dir/mediumfile.txt","")
+	#test("mv dir/file.A dir/dir1/newfile.txt", )
+	test("mv dir/file.A dir/file.F","")
+	test("chmod 777 dir/dir1/SCUFFVCD","No such file or directory")
+	test("mv dir/file.F dir/file.X", "")
+	test("df -kh dir", "/home/demo/fs_7600/team-03-hw3/dir")
 	
-
+	
 def start_test():
 	global testnumber, failedCase
 	tests()
