@@ -139,7 +139,7 @@ def tests():
 	check_file_size("dir/file.A", str(len(execute("cat dir/file.A"))))			#36
 	
 	
-	test("rm -f dir/file.C/file.A", "rm: cannot remove")						#37
+	test("rm -f dir/file.C/file.A", "")						#37
 	test("rm -f dir/file.A", "")												#38
 	test("rm -f dir/dir1/", "rm: cannot remove")								#39
 	test("rm -f dir/file.A", "")												#41
