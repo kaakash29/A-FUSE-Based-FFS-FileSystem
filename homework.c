@@ -1716,38 +1716,71 @@ static int fs_read(const char *path, char *buf, size_t len, off_t offset,
 	}
 	/* get the inode for the file */
 	inode = get_inode_from_inum(inode_num);
+
 	/* size of file */
-	file_size = inode->size;
-	
-	tempbuf = (char*) malloc(sizeof(char) * (offset + len));
-	
-	if (offset >= file_size) {
-		/* Trying to read from beyond the file size */
-		bytes_read = 0;
+	if (offset >= inode->size) {
+		/* Trying to read beyond the file size 
+		 * No support for holes in file */
+		return 0;
 	}
-	else if (offset + len > file_size) {
-		/* read all the bytes from offset to EOF */
-		//read_Data_From_File_Inode(inode, file_size, offset, buf);
-		traverse_inode_to_read (file_size, offset, inode, tempbuf);
-		strcpy(buf, tempbuf);		
-		bytes_read = file_size - offset;
+	else if((offset + len) > inode->size) {
+		/* to read from offset till the end of file */
+		len = inode->size - offset;
 	}
-	else {
-		/* read required no of bytes into the character buffer */
-		// read_Data_From_File_Inode(inode, len, offset, buf);
-		char* finalbuf = NULL;
-		int offsetInBlock = 0;
-		char* buf = NULL;
-		traverse_inode_to_read (len, offset, inode, tempbuf);
-		finalbuf = (char*) malloc(sizeof(char) * (len+offset));
-		offsetInBlock = offset % FS_BLOCK_SIZE;
-		strncpy(finalbuf, tempbuf + offsetInBlock, len);
-		finalbuf[len] = '\0';
-		strcpy(buf, finalbuf);
-		bytes_read = len;
-	}
-	/* return the number of bytes read */
+	bytes_read = read_bytes_from_disk(inode_num, buf, len, offset);
+	printf("\n The buffer that has been read is = %s",buf);
 	return bytes_read;
+}
+
+int read_bytes_from_disk(int inode_num, char *buf, 
+				int len, off_t offset) {
+	
+	//int bytes_read = 0;
+	int block_index = get_starting_block_index(offset);
+	int start_block_index = block_index, i = 0, j = 0;
+	char local_buf[FS_BLOCK_SIZE] = {'\0'};
+	char last_buf[FS_BLOCK_SIZE] = {'\0'};
+	
+	/* read location is starting block */
+	int start_write_loc = get_starting_block_write_location(offset);
+	int block_num = 0, k;
+	struct fs7600_inode *inode = NULL;
+	inode = get_inode_from_inum(inode_num);
+	printf("\n DEBUG : Size = %d", inode->size);
+	/* get the block number to start */
+	block_num = get_blocknum_from_blkindex(block_index, inode_num);
+	/* read the first block */
+	if (disk->ops->read(disk, block_num, 1, local_buf) < 0)
+		exit(1);
+	/* filling local buf from buf and writing to disk */
+	i = start_write_loc; /* the index of local buf */
+	j = 0; /* the index of buf */
+	while (j < len) {
+		buf[j] = local_buf[i];
+		j++;
+		i++;
+		if ((i % FS_BLOCK_SIZE) == 0) /* 1 page size data is ready */
+		{
+			/* write local_buf to disk */			
+			
+			block_index++;
+			
+			/* clear the local buf */
+			for (k = 0; k < FS_BLOCK_SIZE; k++)
+				local_buf[k] = '\0';
+				
+			/* get the next block num to write to */
+			block_num = get_blocknum_from_blkindex(block_index, inode_num);
+			
+			if (disk->ops->read(disk, block_num, 1, local_buf) < 0)
+				exit(1);
+				
+			i = 0; /* reset the index to 0 */
+			
+		}
+	}
+	buf[j] = '\0';
+	return len;
 }
 
 
