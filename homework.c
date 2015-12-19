@@ -21,6 +21,7 @@
 #include "blkdev.h"
 
 /* required constants */
+
 #define TRUE 1  		/* true */
 #define FALSE 0			/* false */
 #define SUCCESS 0		/* return value for success case */
@@ -36,11 +37,10 @@ int* getListOfBlocksOperate(struct fs7600_inode *inode, int len,
 				off_t offset, int *numOfBlocksToread);
 				
 /* global variables */
-int path_cache_access_time = 0;  			/* for LRU in path_cache */
-int dir_cache_access_time = 0; 
-/* for LRU in directory entry cache */
-int wrt_bck_cache_access_time = 0;  /* for LRU impl for 
-										write back cache */
+
+int path_cache_access_time = 0;  /* for LRU in path_cache */
+int dir_cache_access_time = 0;   /* for LRU in directory entry cache */
+int wrt_bck_cache_access_time = 0;  /* for LRU in write back cache */
 extern int homework_part; /* set by '-part n' command-line option */
 
 /* 
@@ -51,43 +51,55 @@ extern int homework_part; /* set by '-part n' command-line option */
  */
 extern struct blkdev *disk;
 
-/* structure to store the path translation maping to inode number 
- * This will represent the caching of path translations in disk */
+/* 
+ * structure to store the path translation mapping to inode number 
+ * This will represent the caching of path translations in disk. 
+ * */
 struct path_cache {
-	char* path;  /* path */
-	int inum;    /* inode number */
+	char* path;  			/* path 						*/
+	int inum;    			/* inode number 				*/
 	int last_access_time;	/* to save the last access time */
-	int valid;    /* to indicate whether valid */
+	int valid;    			/* to indicate whether valid 	*/
 };
 
-/* structure for the directory entry cache */
+/* 
+ * structure for the directory entry cache for accessed 
+ * directory entries from disk. 
+ * */
 struct dir_entry_cache {
-	int parent_inum; /* to store the parent inode number */
-	char* child_name; /* to store the name of the entry in parent */
-	int child_inum; /* to store the entry's inode number */
-	int valid; /* to indicate whether valid */
-	int last_access_time;  /* to save the last access time */
-	int ftype;  /* the type of file */
+	int parent_inum; 		/* the parent inode number 			*/
+	char* child_name; 		/* the name of the entry in parent 	*/
+	int child_inum; 		/* the entry's inode number 		*/
+	int valid; 				/* to indicate whether valid 		*/
+	int last_access_time;  	/* to save the last access time 	*/
+	int ftype;  			/* the type of file 				*/
 };
 
-/* to implement write-back cache  */
+/* 
+ * structure to store clean and dirty pages accessed from disk 
+ * to implement write-back cache.  
+ * */
 struct write_back_cache {
-	int block_num;  /* the block number */
-	char block[FS_BLOCK_SIZE]; /* the entire page */
-	int valid;  /* to indicate whether this is a valid page in memory */
-	int last_access_time;  /* to save the last access time */
+	int block_num;  			/* the block number 			*/
+	char block[FS_BLOCK_SIZE]; 	/* the entire page 				*/
+	int valid;  				/* to indicate whether a valid 	*/
+	int last_access_time;  		/* to save the last access time */
 };
 
+/* path tranlsation cache */
 struct path_cache path_cache_list[PATH_CACHE_SIZE];
+/* directory entry cache */
 struct dir_entry_cache dir_entry_cache_list[DIR_ENTRY_CACHE_SIZE];
-/* to save the list of clean pages in cache */
+/* clean pages write back cache */
 struct write_back_cache write_bk_cln_cache[WRITE_BK_CLN_CACHE_SIZE];
-/* to save the list of dirty pages in cache */
+/* dirty pages write back cache */
 struct write_back_cache write_bk_drty_cache[WRITE_BK_DRTY_CACHE_SIZE];
 
-/* fetch_entry_from_clean_wrt_bck_cache : int -> int
+/* 
+ * fetch_entry_from_clean_wrt_bck_cache : int -> int
  * Returns the cache index for the block number blknum if 
- * found in write back clean cache, otherwise -1. */
+ * found in write back clean cache, otherwise -1. 
+ * */
 int fetch_entry_from_clean_wrt_bck_cache(int blknum) {
 	int i;
 	int cache_entry = -1;
@@ -105,11 +117,13 @@ int fetch_entry_from_clean_wrt_bck_cache(int blknum) {
 	return cache_entry;
 }
 
+/* 
+ * add_entry_to_clean_wrt_bck_cache : int, char* -> int
+ * Finds a free entry or replaces an entry using LRU 
+ * technique to add an entry for blknum and buf in clean
+ * write back cache. 
+ * */
 int add_entry_to_clean_wrt_bck_cache(int blknum, char* buf) {
-	/* check for free entry in cache, if found, then put
-	 * entry in that position
-	 * if not there, then replace the entry with least
-	 * access time */
 	int minimum = write_bk_cln_cache[0].last_access_time;
 	int index_to_replace = 0, i;
 	for (i = 0; i < WRITE_BK_CLN_CACHE_SIZE; i++) {
@@ -125,25 +139,22 @@ int add_entry_to_clean_wrt_bck_cache(int blknum, char* buf) {
 			index_to_replace = i;
 		}
 	}
-	/* found the index to replace by LRU */
 	/* put the entry */
 	replace_clean_wrt_bck_cache_entry(blknum, buf, index_to_replace);
-	/*print_dir_entry_cache();*/
 	return SUCCESS;
 }
 
-/* replace_clean_wrt_bck_cache_entry : int, char*, int -> int
+/* 
+ * replace_clean_wrt_bck_cache_entry : int, char*, int -> int
  * Replaces the entry in write_bk_cln_cache at index entry with
- * blknum and buf */
-int replace_clean_wrt_bck_cache_entry(int blknum, char* buf, int entry) {
+ * blknum and buf 
+ * */
+int replace_clean_wrt_bck_cache_entry(int blknum, 
+										char* buf, int entry) {
 	/* mark the entry as valid */
 	write_bk_cln_cache[entry].valid = 1;
 	/* copy the path to the cache */
-	/*path_cache_list[entry].path = (char*) malloc 
-									(sizeof(char) *);*/
 	memcpy(&write_bk_cln_cache[entry].block, buf, FS_BLOCK_SIZE);
-	//strcpy(write_bk_cln_cache[entry].block, buf);
-	//strcat(write_bk_cln_cache[entry].block, "\0");
 	/* store the inode number */
 	write_bk_cln_cache[entry].block_num = blknum;
 	/* save the incremented access time */
@@ -151,9 +162,12 @@ int replace_clean_wrt_bck_cache_entry(int blknum, char* buf, int entry) {
 							++wrt_bck_cache_access_time;
 	return SUCCESS;
 }
-/* fetch_entry_from_dirty_wrt_bck_cache : int -> int
+
+/* 
+ * fetch_entry_from_dirty_wrt_bck_cache : int -> int
  * Returns the cache index for the block number blknum if 
- * found in write back dirty cache, otherwise -1. */
+ * found in write back dirty cache, otherwise -1. 
+ * */
 int fetch_entry_from_dirty_wrt_bck_cache(int blknum) {
 	int i;
 	int cache_entry = -1;
@@ -171,12 +185,14 @@ int fetch_entry_from_dirty_wrt_bck_cache(int blknum) {
 	return cache_entry;
 }
 
+/* 
+ * add_entry_to_dirty_wrt_bck_cache : int, char* -> int
+ * Finds a free entry or replaces an entry using LRU 
+ * technique to add an entry for blknum and buf in dirty
+ * write back cache. 
+ * */
 int add_entry_to_dirty_wrt_bck_cache(struct blkdev *old_dev, 
 									int blknum, char* buf) {
-	/* check for free entry in cache, if found, then put
-	 * entry in that position
-	 * if not there, then replace the entry with least
-	 * access time */
 	int minimum = write_bk_drty_cache[0].last_access_time;
 	int index_to_replace = 0, i;
 	for (i = 0; i < WRITE_BK_DRTY_CACHE_SIZE; i++) {
@@ -192,35 +208,32 @@ int add_entry_to_dirty_wrt_bck_cache(struct blkdev *old_dev,
 			index_to_replace = i;
 		}
 	}
-	/* found the index to replace by LRU */
 	/* put the entry */
 	replace_dirty_wrt_bck_cache_entry(old_dev, 
 							blknum, buf, index_to_replace);
-	/*print_dir_entry_cache();*/
 	return SUCCESS;
 }
 
-/* replace_dirty_wrt_bck_cache_entry : int, char*, int -> int
+/* 
+ * replace_dirty_wrt_bck_cache_entry : blkdev, int, char*, int -> int
  * Replaces the entry in write_bk_drty_cache at index entry with
- * blknum and buf */
+ * blknum and buf, and writes the evicted entry if it was valid 
+ * one to disk 
+ * */
 int replace_dirty_wrt_bck_cache_entry(struct blkdev *old_dev, 
 							int blknum, char* buf, int entry) {
 	/* mark the entry as valid */
 	if (write_bk_drty_cache[entry].valid == 1) {
 		/* need to write to disk, as replacing a dirty page which
 		 * is a valid one */
-		 if (old_dev->ops->write(old_dev, write_bk_drty_cache[entry].block_num, 
+		 if (old_dev->ops->write(old_dev, 
+					write_bk_drty_cache[entry].block_num, 
 					1, write_bk_drty_cache[entry].block) < 0)
 				/* error on write */
 				exit(1);
 	}
 	write_bk_drty_cache[entry].valid = 1;
-	/* copy the path to the cache */
-	/*path_cache_list[entry].path = (char*) malloc 
-									(sizeof(char) *);*/
 	memcpy(&write_bk_drty_cache[entry].block, buf, FS_BLOCK_SIZE);
-	//strcpy(write_bk_cln_cache[entry].block, buf);
-	//strcat(write_bk_cln_cache[entry].block, "\0");
 	/* store the inode number */
 	write_bk_drty_cache[entry].block_num = blknum;
 	/* save the incremented access time */
@@ -229,7 +242,6 @@ int replace_dirty_wrt_bck_cache_entry(struct blkdev *old_dev,
 	return SUCCESS;
 }
 
-char local_whole_buf[(FS_BLOCK_SIZE * FS_BLOCK_SIZE) + 1];
 /*
  * cache - you'll need to create a blkdev which "wraps" this one
  * and performs LRU caching with write-back.
@@ -240,18 +252,22 @@ int cache_nops(struct blkdev *dev)
     return d->ops->num_blocks(d);
 }
 
+/*
+ * cache_read : blkdev, int, int, void* -> int
+ * Reads the block with block number first from clean or dirty 
+ * cache if present, otherwise reads from disk and adds to clean
+ * cache.
+ * */
 int cache_read(struct blkdev *dev, int first, int n, void *buf)
 {
-	int block_num = first, i, k, j = 0;
 	int entry_in_cache = -1;
 	struct blkdev *old_dev = dev->private;
-	
 	/* first try to get from clean cache */
-	entry_in_cache = fetch_entry_from_clean_wrt_bck_cache(block_num);
+	entry_in_cache = fetch_entry_from_clean_wrt_bck_cache(first);
 	if (entry_in_cache < 0)
 	{
 		/* try to get from dirty cache */
-		entry_in_cache = fetch_entry_from_dirty_wrt_bck_cache(block_num);
+		entry_in_cache = fetch_entry_from_dirty_wrt_bck_cache(first);
 		if (entry_in_cache >= 0) {
 			/* entry found in dirty write back cache */
 			memcpy(buf, 
@@ -267,16 +283,23 @@ int cache_read(struct blkdev *dev, int first, int n, void *buf)
 	if (entry_in_cache < 0)
 	{
 		/* fetch from disk */
-		if (old_dev->ops->read(old_dev, block_num, 1, buf) < 0) {
-			/* error on write */
+		if (old_dev->ops->read(old_dev, first, 1, buf) < 0) {
+			/* error on read */
 			exit(1);
 		}
 		/* add to clean cache */
-		add_entry_to_clean_wrt_bck_cache(block_num, buf);	
+		add_entry_to_clean_wrt_bck_cache(first, buf);	
 	}
     return SUCCESS;
 }
 
+/*
+ * cache_write : blkdev, int, int, void* -> int
+ * Writes the block with block number first to dirty cache if found
+ * otherwise invalidates page in clean cache if found and moves 
+ * to dirty cache, otherwise writes to disk and adds to dirty cache
+ * evicting a page if required.
+ * */
 int cache_write(struct blkdev *dev, int first, int n, void *buf)
 {
     int block_num = first, i, k, j = 0;
@@ -316,6 +339,7 @@ int cache_write(struct blkdev *dev, int first, int n, void *buf)
 	}
     return SUCCESS;
 }
+
 struct blkdev_ops cache_ops = {
     .num_blocks = cache_nops,
     .read = cache_read,
@@ -329,7 +353,8 @@ struct blkdev *cache_create(struct blkdev *d)
     return dev;
 }
 
-/* by defining bitmaps as 'fd_set' pointers, you can use existing
+/* 
+ * by defining bitmaps as 'fd_set' pointers, you can use existing
  * macros to handle them. 
  *   FD_ISSET(##, inode_map);
  *   FD_CLR(##, block_map);
@@ -340,12 +365,16 @@ fd_set *block_map;
 
 struct fs7600_super sb;  /* to store the super block */
 
-/* to store the inodes list */
-/* the number of blocks upper limimted to 1024, can be increased */
+/* 
+ * to store the inodes list */
+/* the number of blocks upper limimted to 1024, can be increased 
+ * */
 struct fs7600_inode inodes_list[INODES_PER_BLK][INODES_PER_BLK];
 
-/* get_inode_from_inum: int -> struct fs7600_inode*
- * Returns the pointer to the inode for the given inode_number */
+/* 
+ * get_inode_from_inum: int -> struct fs7600_inode*
+ * Returns the pointer to the inode for the given inode_number 
+ * */
 struct fs7600_inode* get_inode_from_inum(int inode_number) {
 	/* Get the block number which contains the inode entry */
 	int disk_block = get_block_number_from_inum(inode_number);
@@ -355,40 +384,48 @@ struct fs7600_inode* get_inode_from_inum(int inode_number) {
 	return &(inodes_list[disk_block][disk_block_entry]);
 }
 
-/* get_inodes_region_starting_block: -> int
- * Returns the starting block for the inodes region on disk. */
+/* 
+ * get_inodes_region_starting_block: -> int
+ * Returns the starting block for the inodes region on disk. 
+ * */
 int get_inodes_region_starting_block() {
 	return (sb.block_map_sz + get_block_map_starting_block());
 }
 
-/* get_inode_map_starting_block: -> int
- * Returns the starting block for the inodes map on disk. */
+/* 
+ * get_inode_map_starting_block: -> int
+ * Returns the starting block for the inodes map on disk. 
+ * */
 int get_inode_map_starting_block() {
 	return 1;
 }
 
-/* get_block_map_starting_block: -> int
- * Returns the starting block for the blocks map on disk. */
+/* 
+ * get_block_map_starting_block: -> int
+ * Returns the starting block for the blocks map on disk. 
+ * */
 int get_block_map_starting_block() {
 	return (sb.inode_map_sz + get_inode_map_starting_block());
 }
 
-/* get_block_number_from_inum : int -> int
+/* 
+ * get_block_number_from_inum : int -> int
  * Returns the block number which contains this inode_number 
- * from the inodes region */
+ * from the inodes region 
+ * */
 int get_block_number_from_inum(int inode_number) {
 	return inode_number / INODES_PER_BLK;
 }
 
-/* write_block_to_inode_region : int -> int
- * Writes the block for this inode number to disk */
+/* 
+ * write_block_to_inode_region : int -> int
+ * Writes the block for this inode number to disk 
+ * */
 int write_block_to_inode_region(int inode_number) {
 	/* get the block number for the inode_number */
 	int blnum = get_block_number_from_inum(inode_number);
 	/* get the actual corresponding block number on disk */
 	int actual_disk_block = get_inodes_region_starting_block() + blnum;
-	/*printf("\n DEBUG: Writing actual inode block = %d to disk \n", 
-	actual_disk_block);*/
 	/* write the block to disk */
 	if (disk->ops->write(disk, actual_disk_block, 1, 
 					&inodes_list[blnum]) < 0)
@@ -398,19 +435,21 @@ int write_block_to_inode_region(int inode_number) {
     return SUCCESS;
 }
 
-/* get_bl_inode_number_from_inum; int -> int
+/* 
+ * get_bl_inode_number_from_inum; int -> int
  * Retuns the inode entry number in a block 
- * for the given inode number  */
+ * for the given inode number  
+ * */
 int get_bl_inode_number_from_inum(int inode_number) {
 	return inode_number % INODES_PER_BLK;
 }
 
-/* get_free_block_number: -> int
- * Returns a free block number, if possible, otherwise 0. */
+/* 
+ * get_free_block_number: -> int
+ * Returns a free block number, if possible, otherwise 0. 
+ * */
 int get_free_block_number() {
-	//int block_count = sizeof(*block_map);
 	int block_count = sb.num_blocks;
-	//int block_count = (sb.block_map_sz * FS_BLOCK_SIZE)/sizeof(block_map);
 	int free_entry = 0;
 	int index = 0;
 	while (index < block_count) {
@@ -424,8 +463,10 @@ int get_free_block_number() {
 	return free_entry;
 }
 
-/* set_block_number : int -> int
- * Sets the bit block_num in block_map. */
+/* 
+ * set_block_number : int -> int
+ * Sets the bit block_num in block_map. 
+ * */
 int set_block_number(int block_num) {
 	FD_SET(block_num, block_map);
 	if (disk->ops->write(disk, get_block_map_starting_block(), 
@@ -435,8 +476,10 @@ int set_block_number(int block_num) {
 	return SUCCESS;
 }
 
-/* clear_block_number : int -> int
- * Clears the bit block_num in block_map. */
+/* 
+ * clear_block_number : int -> int
+ * Clears the bit block_num in block_map. 
+ * */
 int clear_block_number(int block_num) {
 	FD_CLR(block_num, block_map);
 	if (disk->ops->write(disk, get_block_map_starting_block(), 
@@ -446,11 +489,12 @@ int clear_block_number(int block_num) {
 	return SUCCESS;
 }
 
-/* get_free_inode_number: -> int
- * Returns a free inode number, if possible, otherwise 0. */
+/* 
+ * get_free_inode_number: -> int
+ * Returns a free inode number, if possible, otherwise 0. 
+ * */
 int get_free_inode_number() {
 	int inode_count = sizeof(*inode_map);
-	//int inode_count = (sb.inode_map_sz * FS_BLOCK_SIZE)/sizeof(inode_map);
 	int free_entry = 0;
 	int index = 0;
 	while (index < inode_count) {
@@ -464,8 +508,10 @@ int get_free_inode_number() {
 	return free_entry;
 }
 
-/* set_inode_number : int -> int
- * Sets the bit inum in inode_map. */
+/* 
+ * set_inode_number : int -> int
+ * Sets the bit inum in inode_map. 
+ * */
 int set_inode_number(int inum) {
 	FD_SET(inum, inode_map);
 	if (disk->ops->write(disk, get_inode_map_starting_block(), 
@@ -475,8 +521,10 @@ int set_inode_number(int inum) {
 	return SUCCESS;
 }
 
-/* clear_inode_number : int -> int
- * Clears the bit inum in inode_map. */
+/* 
+ * clear_inode_number : int -> int
+ * Clears the bit inum in inode_map. 
+ * */
 int clear_inode_number(int inum) {
 	FD_CLR(inum, inode_map);
 	if (disk->ops->write(disk, get_inode_map_starting_block(), 
@@ -486,10 +534,12 @@ int clear_inode_number(int inum) {
 	return SUCCESS;
 }
 
-/* remove_last_token : char*, char**  -> char*
+/* 
+ * remove_last_token : char*, char**  -> char*
  * Tokenizes the string path based on the separator "/" and
  * removes the last token and returns the string. Also,
- * sets the last token in last_token */
+ * sets the last token in last_token 
+ * */
 char* remove_last_token(const char *path, char** last_token) {
 	char* working_string = NULL;
 	char* curr_substring = NULL;
@@ -523,9 +573,11 @@ char* remove_last_token(const char *path, char** last_token) {
 	return return_string;
 }
 
-/* fetch_entry_from_dir_entry_cache : int, char*, int* -> int
+/* 
+ * fetch_entry_from_dir_entry_cache : int, char*, int* -> int
  * Returns the mapped child inode number in cache for the directory 
- * entry of dir_inum for name if exists, else returns -1. */
+ * entry of dir_inum for name if exists, else returns -1. 
+ * */
 int fetch_entry_from_dir_entry_cache(int dir_inum, 
 							char* name, int* ftype) {
 	int child_inode_number = -1, i;
@@ -543,13 +595,14 @@ int fetch_entry_from_dir_entry_cache(int dir_inum,
 			break;
 		}
 	}
-	/*print_dir_entry_cache();*/
 	return child_inode_number;
 }
 
-/* replace_dir_cache_entry : int, char*, int, int, int -> int
+/* 
+ * replace_dir_cache_entry : int, char*, int, int, int -> int
  * Replaces the entry in directory entry cache at index entry with
- * a mapping of dir_inum, name to child_inum */
+ * a mapping of dir_inum, name to child_inum 
+ * */
 int replace_dir_cache_entry(int dir_inum, char* name, 
 							int child_inum, int entry, int ftype) {
 	/* mark the entry as valid */
@@ -570,16 +623,14 @@ int replace_dir_cache_entry(int dir_inum, char* name,
 	return SUCCESS;
 }
 
-/* add_dir_entry_to_cache : int, char*, int -> int
+/* 
+ * add_dir_entry_to_cache : int, char*, int -> int
  * Adds the entry of [dir_inum, name] mapped to child_inum in the 
  * directory entry cache, after finding a free entry if it exists,
- * or replacing an existing entry by LRU. */
+ * or replacing an existing entry by LRU. 
+ * */
 int add_dir_entry_to_cache(int dir_inum, char* name, 
 								int child_inum, int ftype) {
-	/* check for free entry in cache, if found, then put
-	 * entry in that position
-	 * if not there, then replace the entry with least
-	 * access time */
 	int minimum = dir_entry_cache_list[0].last_access_time;
 	int index_to_replace = 0, i;
 	for (i = 0; i < DIR_ENTRY_CACHE_SIZE; i++) {
@@ -596,16 +647,16 @@ int add_dir_entry_to_cache(int dir_inum, char* name,
 		}
 	}
 	/* found the index to replace by LRU */
-	/* put the entry */
 	replace_dir_cache_entry(dir_inum, name, child_inum, 
 								index_to_replace, ftype);
-	/*print_dir_entry_cache();*/
 	return SUCCESS;
 }
 
-/* invalidate_entry_in_dir_cache : int, char* -> int
+/* 
+ * invalidate_entry_in_dir_cache : int, char* -> int
  * Invalidates the entry of [dir_inum, name] mapped to child_inum 
- * in the directory entry cache, by setting the valid bit to 0. */
+ * in the directory entry cache, by setting the valid bit to 0. 
+ * */
 int invalidate_entry_in_dir_cache(int dir_inum, char* name) {
 	/* Find the corresponding entry in dir_entry_cache
 	 * and set the valid bit to 0 */
@@ -626,9 +677,11 @@ int invalidate_entry_in_dir_cache(int dir_inum, char* name) {
 	return SUCCESS;
 }
 
-/* fetch_entry_from_path_cache : char* -> int
+/* 
+ * fetch_entry_from_path_cache : char* -> int
  * Returns the mapped inode number in cache for the path if exists,
- * else returns -1. */
+ * else returns -1. 
+ * */
 int fetch_entry_from_path_cache(const char* path) {
 	int inode_number = -1, i;
 	for (i = 0; i < PATH_CACHE_SIZE; i++) {
@@ -642,37 +695,37 @@ int fetch_entry_from_path_cache(const char* path) {
 			break;
 		}
 	}
-	/*print_path_cache();*/
 	return inode_number;
 }
 
-/* replace_cache_entry : char*, int, int -> int
+/* 
+ * replace_cache_entry : char*, int, int -> int
  * Replaces the netry in path_cache at index entry with
- * path and inum */
+ * path and inum 
+ * */
 int replace_cache_entry(const char* path, int inum, int entry) {
 	/* mark the entry as valid */
 	path_cache_list[entry].valid = 1;
 	/* copy the path to the cache */
 	path_cache_list[entry].path = (char*) malloc 
-									(sizeof(char) * (strlen(path) + 1));
+						(sizeof(char) * (strlen(path) + 1));
 	strcpy(path_cache_list[entry].path, path);
 	strcat(path_cache_list[entry].path, "\0");
 	/* store the inode number */
 	path_cache_list[entry].inum = inum;
 	/* save the incremented access time */
-	path_cache_list[entry].last_access_time = ++path_cache_access_time;
+	path_cache_list[entry].last_access_time = 
+									++path_cache_access_time;
 	return SUCCESS;
 }
 
-/* add_path_to_cache : char*, int -> int
+/* 
+ * add_path_to_cache : char*, int -> int
  * Adds the entry of path and inum to path_cache, after finding
  * a free nedtry if it exists,, or replacing an existing entry
- * by LRU. */
+ * by LRU. 
+ * */
 int add_path_to_cache(const char* path, int inum) {
-	/* check for free entry in cache, if found, then put
-	 * entry in that position
-	 * if not there, then replace the entry with least
-	 * access time */
 	int minimum = path_cache_list[0].last_access_time;
 	int index_to_replace = 0, i;
 	for (i = 0; i < PATH_CACHE_SIZE; i++) {
@@ -689,16 +742,16 @@ int add_path_to_cache(const char* path, int inum) {
 		}
 	}
 	/* found the index to replace by LRU */
-	/* put the entry */
 	replace_cache_entry(path, inum, index_to_replace);
-	/*print_path_cache();*/
 	return SUCCESS;
 }
 
-/* fs_translate_path_to_inum : const char*, int* -> int
+/* 
+ * fs_translate_path_to_inum : const char*, int* -> int
  * Translates the path provided to the inode of the file
  * pointed to by the path, and returns the inode
- * Returns Error if path is invalid  */
+ * Returns Error if path is invalid  
+ * */
 static int fs_translate_path_to_inum(const char* path, int* type) {
 	char *curr_dir = NULL;
 	char *parent_dir = NULL;
@@ -765,7 +818,8 @@ static int fs_translate_path_to_inum(const char* path, int* type) {
 	}
 }
 
-/* get_dir_entries_from_dir_inum : 
+/* 
+ * get_dir_entries_from_dir_inum : 
  * 						int, struct fs7600_dirent* -> int
  * Reads the entry_list for the directory with inode_number 
  * from disk (only 1 block for a directory) 
@@ -773,7 +827,6 @@ static int fs_translate_path_to_inum(const char* path, int* type) {
  *  */
 int get_dir_entries_from_dir_inum(int inode_number, 
 						struct fs7600_dirent *entry_list) {
-	//struct fs7600_dirent entry_list[32];
     struct fs7600_inode *inode = NULL;
     int dir_block_num;
     /* get the inode from the inode number */
@@ -784,7 +837,8 @@ int get_dir_entries_from_dir_inum(int inode_number,
     return SUCCESS;
 }
 
-/* write_dir_entries_to_disk_for_dir_inum : 
+/* 
+ * write_dir_entries_to_disk_for_dir_inum : 
  * 							int, struct fs7600_dirent* -> int
  * Writes the entry_list for the directory with inode_number 
  * to disk (only 1 block for a directory) 
@@ -803,7 +857,8 @@ int write_dir_entries_to_disk_for_dir_inum(int inode_number,
 }
 
 
-/* init - this is called once by the FUSE framework at startup. Ignore
+/* 
+ * init - this is called once by the FUSE framework at startup. Ignore
  * the 'conn' argument.
  * recommended actions:
  *   - read superblock
@@ -904,7 +959,8 @@ static int fs_getattr(const char *path, struct stat *sb)
     return SUCCESS;
 }
 
-/* readdir - get directory contents.
+/* 
+ * readdir - get directory contents.
  *
  * for each entry in the directory, invoke the 'filler' function,
  * which is passed as a function pointer, as follows:
@@ -926,7 +982,8 @@ static int fs_readdir(const char *path, void *ptr, fuse_fill_dir_t filler,
 	else {
 		/* translate the path to the inode_number, if possible */
 		inode_number = fs_translate_path_to_inum(path, &type);
-		/* If path translation returned an error, then return the error */
+		/* If path translation returned an error, then 
+		 * return the error */
 		if ((inode_number == -ENOENT) || (inode_number == -ENOTDIR))
 			return inode_number;
 			
@@ -936,9 +993,9 @@ static int fs_readdir(const char *path, void *ptr, fuse_fill_dir_t filler,
 	}
 	/* If we have NOT errored out above then get the 
 	 * directory entries for this directory */
-	if (get_dir_entries_from_dir_inum(inode_number, entry_list) != SUCCESS)
+	if (get_dir_entries_from_dir_inum(inode_number, entry_list) 
+														!= SUCCESS)
 		return -ENOENT;
-		
 	/* Fill the stat buffer using the filler */
 	for (i = 0; i < 32; i++) {
 		
@@ -948,7 +1005,8 @@ static int fs_readdir(const char *path, void *ptr, fuse_fill_dir_t filler,
     return SUCCESS;
 }
 
-/* see description of Part 2. In particular, you can save information 
+/* 
+ * see description of Part 2. In particular, you can save information 
  * in fi->fh. If you allocate memory, free it in fs_releasedir.
  */
 static int fs_opendir(const char *path, struct fuse_file_info *fi)
@@ -985,10 +1043,12 @@ static int fs_releasedir(const char *path, struct fuse_file_info *fi)
 	return 0;
 }
 
-/* entry_exists_in_directory : int, char*, int*, int* -> int
+/* 
+ * entry_exists_in_directory : int, char*, int*, int* -> int
  * Checks in the directory entries for the inode number dir_num
  * whether entry exists in it, and sets the type and inode number 
- * for it. */
+ * for it. 
+ * */
 int entry_exists_in_directory(int dir_inum, char* entry, 
 						int* ftype, int* inode) {
 	struct fs7600_dirent entry_list[32];
@@ -1028,7 +1088,8 @@ int entry_exists_in_directory(int dir_inum, char* entry,
 	return found;
 }
 
-/* mknod - create a new file with permissions (mode & 01777)
+/* 
+ * mknod - create a new file with permissions (mode & 01777)
  *
  * Errors - path resolution, EEXIST
  *          in particular, for mknod("/a/b/c") to succeed,
@@ -1053,10 +1114,10 @@ static int fs_mknod(const char *path, mode_t mode, dev_t dev)
 	new_inum = initialize_new_inode_and_block(mode | S_IFREG);
 	return add_entry_to_dir_inode(parent_inum, new_dir_name, 
 									new_inum, IS_FILE);
-    //return SUCCESS;
 }
 
-/* mkdir - create a directory with the given mode.
+/* 
+ * mkdir - create a directory with the given mode.
  * Errors - path resolution, EEXIST
  * Conditions for EEXIST are the same as for create. 
  * If this would result in >32 entries in a directory, return -ENOSPC
@@ -1076,16 +1137,17 @@ static int fs_mkdir(const char *path, mode_t mode)
 	}
 	/* initialize a new dir inode */
 	new_inum = initialize_new_inode_and_block(mode | S_IFDIR);
-	//return SUCCESS;
 	return add_entry_to_dir_inode(parent_inum, new_dir_name, 
 									new_inum, IS_DIR);
 }
 
-/* validate_path_for_new_create : const char *, char** -> int
+/* 
+ * validate_path_for_new_create : const char *, char** -> int
  * Validates the path till the penultimate element for new
  * file/directory creation.
  * Returns the parent dir inode number on success, otherwise
- * returns error. */
+ * returns error. 
+ * */
 int validate_path_for_new_create(const char *path, char** new_name) {
 	int type, parent_inum, existing_inode_number, found = 0;
 	parent_inum = validate_path_till_penultimate(path, new_name);
@@ -1100,9 +1162,11 @@ int validate_path_for_new_create(const char *path, char** new_name) {
 	return parent_inum;
 }
 
-/* initialize_new_inode_and_block : mode_t -> int
+/* 
+ * initialize_new_inode_and_block : mode_t -> int
  * Creates a new inode and allocates a block to it.
- * Returns the inode number of the new flie/directory. */
+ * Returns the inode number of the new flie/directory. 
+ * */
 int initialize_new_inode_and_block(mode_t mode) {
 	struct fs7600_inode* inode_ptr;
 	struct fs7600_dirent entry_list[32];
@@ -1143,16 +1207,17 @@ int initialize_new_inode_and_block(mode_t mode) {
 	inode_ptr->indir_2 = 0;
 	/* write the inode block for this new inode number to disk */
 	write_block_to_inode_region(inode_number);
-	//write_dir_entries_to_disk_for_dir_inum(inode_number, entry_list);
 	/* Return the inode number of the new directory/file */
 	return inode_number;
 }
 
-/* add_entry_to_dir_inode : int, char*, int, int -> int
+/* 
+ * add_entry_to_dir_inode : int, char*, int, int -> int
  * Adds an entry for name and inum in the entries set for 
  * directory with inode number parent_dir_inum, based on isDir.
  * Writes this modified directory block to disk.
- * Returns -ENOSPC if all entries are full */
+ * Returns -ENOSPC if all entries are full 
+ * */
 int add_entry_to_dir_inode(int parent_dir_inum, char* name, 
 							int inum, int isDir) {
 	struct fs7600_dirent entry_list[32];
@@ -1160,8 +1225,6 @@ int add_entry_to_dir_inode(int parent_dir_inum, char* name,
 	get_dir_entries_from_dir_inum(parent_dir_inum, entry_list);
 	/* Check if entry is present in parent directory entry list */
 	for (i = 0; i < 32; i++) {
-		//printf("\n DEBUG : Current directory contains file %s with inode %d ",
-		//entry_list[i].name, entry_list[i].inode);
 		if (entry_list[i].valid == 0) {
 			/* mark as valid */
 			entry_list[i].valid = 1;
@@ -1192,7 +1255,8 @@ int add_entry_to_dir_inode(int parent_dir_inum, char* name,
 	return SUCCESS;
 }
 
-/* truncate - truncate file to exactly 'len' bytes
+/* 
+ * truncate - truncate file to exactly 'len' bytes
  * Errors - path resolution, ENOENT, EISDIR, EINVAL
  *    return EINVAL if len > 0.
  */
@@ -1210,13 +1274,13 @@ static int fs_truncate(const char *path, off_t len)
     int i;
     if (len != 0)
 			return -EINVAL;		/* invalid argument */
-    strcpy(emptBuf, "");
-    //printf("\n DEBUG : fs_truncate function called ");fflush(stdout); 
+    strcpy(emptBuf, ""); 
     inum = fs_translate_path_to_inum(path, &type);
     if(inum < 0)
 		return inum;
 	inode = get_inode_from_inum(inum);
-    blocksList = getListOfBlocksOperate(inode, inode->size, 0, &numOfBlocks);
+    blocksList = getListOfBlocksOperate(inode, 
+							inode->size, 0, &numOfBlocks);
     for(i=1; i<numOfBlocks; i++)
 	{
 			clear_block_number(blocksList[i]);
@@ -1225,14 +1289,14 @@ static int fs_truncate(const char *path, off_t len)
 		inode->direct[i] = 0;
 	inode->indir_1 = 0;
 	inode->indir_2 = 0;
-	update_Block_Wid_Buf(inode, inum, inode->direct[0], emptBuf);
 	inode->size = 0;
 	write_block_to_inode_region(inum);
     return SUCCESS;
 }
 
 
-/* unlink - delete a file
+/* 
+ * unlink - delete a file
  *  Errors - path resolution, ENOENT, EISDIR
  * Note that you have to delete (i.e. truncate) all the data.
  */
@@ -1242,37 +1306,34 @@ static int fs_unlink(const char *path)
 	int* blocklist = NULL;
 	char *to_remove = NULL;
 	struct fs7600_inode *inode = NULL;
-	
 	inum  = fs_translate_path_to_inum(path, &type);
 	if (inum < 0) {
 		/* error */
 		return inum;
 	}
-	
 	if (type == IS_DIR)
-			return -EISDIR;
-		
+		return -EISDIR;
 	inode = get_inode_from_inum(inum);
-	
 	// unset all blocks for the inode
-	blocklist = getListOfBlocksOperate(inode, inode->size, 0, &numofBlocksInFile);
+	blocklist = getListOfBlocksOperate(inode, inode->size,
+					0, &numofBlocksInFile);
 	for(i=0; i<numofBlocksInFile; i++) 
 		clear_block_number(blocklist[i]);
-		
 	// remove inode entry from parent directory
 	parent_inum = validate_path_till_penultimate(path, &to_remove);
-	
 	if(parent_inum < 0)
 		return parent_inum;
-			
 	remove_entry_from_dir_inode(parent_inum, to_remove);
-	
 	// unset inode 
 	clear_inode_number(inum);
-	
     return SUCCESS;
 }
 
+/*
+ * validate_path_till_penultimate : char*, char** -> int
+ * validates the path till the second last entry, and sets 
+ * last_token to the last value.
+ * */
 int validate_path_till_penultimate(const char* path, char** last_token) {
 	int type, parent_inum;
 	const char* stripped_path = remove_last_token(path, last_token);
@@ -1286,11 +1347,13 @@ int validate_path_till_penultimate(const char* path, char** last_token) {
 	return parent_inum;
 }
 
-/* validate_path_for_remove : const char *, char** -> int
+/* 
+ * validate_path_for_remove : const char *, char** -> int
  * Validates the path till the penultimate element for 
  * directory removal.
  * Returns the parent dir inode number on success, otherwise
- * returns error. */
+ * returns error. 
+ * */
 int validate_path_for_remove(const char *path, char** to_remove, 
 										int* remove_dir_inum) {
 
@@ -1307,9 +1370,11 @@ int validate_path_for_remove(const char *path, char** to_remove,
 	return parent_inum;
 }
 
-/* remove_dir_is_empty : int -> int
+/* 
+ * remove_dir_is_empty : int -> int
  * Returns 1 if the directory with inode number dir_inum 
- * is empty, otherwise 0. */
+ * is empty, otherwise 0. 
+ * */
 int remove_dir_is_empty(int dir_inum) {
 	struct fs7600_dirent entry_list[32];
 	int empty = 1, i;
@@ -1325,6 +1390,14 @@ int remove_dir_is_empty(int dir_inum) {
 	return empty;
 }
 
+/*
+ * remove_entry_from_dir_inode : int, char* -> int
+ * Unsets the entry for name in directory with inode number
+ * parent_dir_inum if found, otherwise returns -ENOENT.
+ * Writes the changed block to disk
+ * Optionally, for directory entry cache, invalidates the 
+ * entry in the cache.
+ * */
 int remove_entry_from_dir_inode(int parent_dir_inum, char* name) {
 	struct fs7600_dirent entry_list[32];
 	int i, found = 0;
@@ -1355,7 +1428,8 @@ int remove_entry_from_dir_inode(int parent_dir_inum, char* name) {
 	return SUCCESS;
 }
 
-/* rmdir - remove a directory
+/* 
+ * rmdir - remove a directory
  *  Errors - path resolution, ENOENT, ENOTDIR, ENOTEMPTY
  */
 static int fs_rmdir(const char *path)
@@ -1374,12 +1448,13 @@ static int fs_rmdir(const char *path)
 		/* the directory to remove is not empty. ERROR */
 		return -ENOTEMPTY;
 	}
-	/* Remove the entry for this directory from its parent directory */
+	/* Remove the entry for this directory 
+	 * from its parent directory */
 	return remove_entry_from_dir_inode(parent_inum, to_remove_dir);
-	//return SUCCESS;
 }
 
-/* validate_path_for_rename : char*, char*, char**, char** -> int
+/* 
+ * validate_path_for_rename : char*, char*, char**, char** -> int
  * Returns the source directory parent inode number after 
  * validating source and dest parent dir to be same, both
  * being valid paths, and src exists, and dest does not exist 
@@ -1389,21 +1464,24 @@ int validate_path_for_rename(const char *src_path,
 	int type, src_parent_inum, found = 0, dest_parent_inum;
 	int rename_dir_inum;
 	/* check whether src path is valid till penultimate */
-	src_parent_inum = validate_path_till_penultimate(src_path, old_name);
+	src_parent_inum = 
+			validate_path_till_penultimate(src_path, old_name);
 	if (src_parent_inum < 0) 
 		return src_parent_inum;
 	/* check whether dest path is valid till penultimate */
-	dest_parent_inum = validate_path_till_penultimate(dest_path, new_name);
+	dest_parent_inum = 
+			validate_path_till_penultimate(dest_path, new_name);
 	if (dest_parent_inum < 0) 
 		return dest_parent_inum;
-	/* check whether src path and dest path point to the same location */
+	/* check whether src path and dest path 
+	 * point to the same location */
 	if (src_parent_inum != dest_parent_inum)
 		return -EINVAL;
 	/* check whether src file/dir does not exist */
 	found = entry_exists_in_directory(src_parent_inum, *old_name, 
 						&type, &rename_dir_inum);
 	if (found == 0) {
-		/* The src directory/file to rename does not exist, so error */
+		/* The src directory/file to rename doesn't exist, so error */
 		return -ENOENT;
 	}
 	/* check whether dest file/dir already exists */
@@ -1418,7 +1496,8 @@ int validate_path_for_rename(const char *src_path,
 	return src_parent_inum;
 }
 
-/* update_entry_in_dir_inode : int, char*, char* -> int
+/* 
+ * update_entry_in_dir_inode : int, char*, char* -> int
  * Updates the entry for old_name to new_name in entries list
  * for parent_dir_inum inode number of directory, and writes
  * to disk. 
@@ -1459,7 +1538,8 @@ int update_entry_in_dir_inode(int parent_dir_inum, char* old_name,
 	return SUCCESS;										
 }
 
-/* rename - rename a file or directory
+/* 
+ * rename - rename a file or directory
  * Errors - path resolution, ENOENT, EINVAL, EEXIST
  *
  * ENOENT - source does not exist
@@ -1487,7 +1567,8 @@ static int fs_rename(const char *src_path, const char *dst_path)
 										old_name, new_name);
 }
 
-/* chmod - change file permissions
+/* 
+ * chmod - change file permissions
  * utime - change access and modification times
  *         (for definition of 'struct utimebuf', see 'man utime')
  *
@@ -1530,101 +1611,90 @@ int fs_utime(const char *path, struct utimbuf *ut)
     return write_block_to_inode_region(inum);
 }
 
-
-/* getListOfBlocksOperate : indoe len(max. file size) offset 
+/* 
+ * getListOfBlocksOperate : indoe len(max. file size) offset 
  * Returns an integer pointer to list of blcoks in the file 
  * starting at given offset and accumulating given length
  * */
 int* getListOfBlocksOperate(struct fs7600_inode *inode, int len, 
 				off_t offset, int *numOfBlocksToread) {
 
-		int filesize, startBlockInd, sizeInBlock01, numBlocks2Read;
-		int sizeOfReadList;
-		int *readBlocksList = NULL;
-		int indir1blocks[256];
-		int i = 0;
-		int j = 0;
+	int filesize, startBlockInd, sizeInBlock01, numBlocks2Read;
+	int sizeOfReadList;
+	int *readBlocksList = NULL;
+	int indir1blocks[256];
+	int i = 0;
+	int j = 0;
+	filesize = inode->size;
+	startBlockInd = (int) (offset / FS_BLOCK_SIZE);
+	sizeInBlock01 = (offset % FS_BLOCK_SIZE);
+	sizeOfReadList = numBlocks2Read = 
+		(int)((len - sizeInBlock01)/FS_BLOCK_SIZE) + 1;
+	readBlocksList = (int*)malloc(numBlocks2Read * sizeof(int));
+	j = 0;
+	i = startBlockInd;	//current index of reading from blocks
+	while(numBlocks2Read > 0) {	
+		// 1. Direct Pointer area reading
+		if (i < 6) {
+			readBlocksList[j] = inode->direct[i];
+			numBlocks2Read = numBlocks2Read - 1;
+			j = j + 1;
+		}	
+		// 2. First indirection pointer reading
+		else if ((i > 6) && (i < 256)) {
 		
-		filesize = inode->size;
-		startBlockInd = (int) (offset / FS_BLOCK_SIZE);
-		sizeInBlock01 = (offset % FS_BLOCK_SIZE);
-		sizeOfReadList = numBlocks2Read = 
-			(int)((len - sizeInBlock01)/FS_BLOCK_SIZE) + 1;
-		
-		readBlocksList = (int*)malloc(numBlocks2Read * sizeof(int));
-		
-		j = 0;
-		i = startBlockInd;	//current index of reading from blocks
-		
-
-		while(numBlocks2Read > 0){
+			if (disk->ops->read(disk, inode->indir_1, 1, 
+					&indir1blocks) < 0)
+				exit(1);
 			
-			// 1. Direct Pointer area reading
-			if (i < 6) {
-				readBlocksList[j] = inode->direct[i];
-				numBlocks2Read = numBlocks2Read - 1;
-				j = j + 1;
+			if(numBlocks2Read > 256) {
+				memcpy(readBlocksList + j, indir1blocks, 
+							256 * sizeof(int));
+				numBlocks2Read = numBlocks2Read - 256;
+				i = i + 256;
+				j = j + 256;
+			} else {
+				memcpy(readBlocksList + j, indir1blocks, 
+							numBlocks2Read * sizeof(int));
+				i = i + numBlocks2Read;
+				j = j + numBlocks2Read;
+				numBlocks2Read = 0;
 			}
-			
-			// 2. First indirection pointer reading
-			else if ((i > 6) && (i < 256)) {
-			
-				if (disk->ops->read(disk, inode->indir_1, 1, 
-						&indir1blocks) < 0)
+		}	
+		// 3. Second level indirection pointer reading
+		else {
+			int tempBlocksList[256];
+			int tempBlocksList2[256];
+			if (disk->ops->read(disk, inode->indir_2, 1, 
+						&tempBlocksList) < 0)
+				exit(1);
+			for(i = 0; i < 256 ; i++)
+			{
+				if (disk->ops->read(disk, tempBlocksList[i], 1, 
+							&tempBlocksList2) < 0)
 					exit(1);
-				
-				if(numBlocks2Read > 256) {
-					memcpy(readBlocksList + j, indir1blocks, 
-								256 * sizeof(int));
-					numBlocks2Read = numBlocks2Read - 256;
-					i = i + 256;
-					j = j + 256;
-				} else {
-					memcpy(readBlocksList + j, indir1blocks, 
-								numBlocks2Read * sizeof(int));
-					i = i + numBlocks2Read;
-					j = j + numBlocks2Read;
-					numBlocks2Read = 0;
-				}
 			}
-			
-			// 3. Second level indirection pointer reading
-			else {
-				int tempBlocksList[256];
-				int tempBlocksList2[256];
-				
-				if (disk->ops->read(disk, inode->indir_2, 1, 
-							&tempBlocksList) < 0)
-					exit(1);
-				
-				for(i = 0; i < 256 ; i++)
-				{
-					if (disk->ops->read(disk, tempBlocksList[i], 1, 
-								&tempBlocksList2) < 0)
-						exit(1);
-				}
-				
-				if(numBlocks2Read > 256) {
-					memcpy(readBlocksList + j, tempBlocksList2, 
-								256 * sizeof(int));
-					numBlocks2Read = numBlocks2Read - 256;
-					j = j + 256;
-					i = i + 256;
-				} else {
-					memcpy(readBlocksList + j, indir1blocks, 
-								numBlocks2Read * sizeof(int));
-					i = i + numBlocks2Read;
-					j = j + numBlocks2Read;
-					numBlocks2Read = 0;
-				}			
-			}
+			if(numBlocks2Read > 256) {
+				memcpy(readBlocksList + j, tempBlocksList2, 
+							256 * sizeof(int));
+				numBlocks2Read = numBlocks2Read - 256;
+				j = j + 256;
+				i = i + 256;
+			} else {
+				memcpy(readBlocksList + j, indir1blocks, 
+							numBlocks2Read * sizeof(int));
+				i = i + numBlocks2Read;
+				j = j + numBlocks2Read;
+				numBlocks2Read = 0;
+			}			
+		}
 	}
-	
 	*numOfBlocksToread = sizeOfReadList;
 	return readBlocksList;
 }
 
-/* read - read data from an open file.
+/* 
+ * read - read data from an open file.
  * should return exactly the number of bytes requested, except:
  *   - if offset >= file len, return 0
  *   - if offset+len > file len, return bytes from offset to EOF
@@ -1640,7 +1710,7 @@ static int fs_read(const char *path, char *buf, size_t len, off_t offset,
 	int bytes_read = 0;
 	struct fs7600_inode *inode = NULL;
 	char* tempbuf = NULL;
-	
+	/* usng the path translation cache */
 	if (homework_part > 1) {
 		inode_num = fi->fh;
 	}
@@ -1659,7 +1729,6 @@ static int fs_read(const char *path, char *buf, size_t len, off_t offset,
 	}
 	/* get the inode for the file */
 	inode = get_inode_from_inum(inode_num);
-
 	/* size of file */
 	if (offset >= inode->size) {
 		/* Trying to read beyond the file size 
@@ -1671,25 +1740,24 @@ static int fs_read(const char *path, char *buf, size_t len, off_t offset,
 		len = inode->size - offset;
 	}
 	bytes_read = read_bytes_from_disk(inode_num, buf, len, offset);
-	printf("\n The buffer that has been read is = %s",buf);
 	return bytes_read;
 }
 
+/*
+ * read_bytes_from_disk : int, char*, int, off_t -> int
+ * Reads len number of bytes from disk and returns it.
+ * */
 int read_bytes_from_disk(int inode_num, char *buf, 
-				int len, off_t offset) {
-	
-	//int bytes_read = 0;
+				int len, off_t offset) 
+{
 	int block_index = get_starting_block_index(offset);
 	int start_block_index = block_index, i = 0, j = 0;
 	char local_buf[FS_BLOCK_SIZE] = {'\0'};
-	char last_buf[FS_BLOCK_SIZE] = {'\0'};
-	
 	/* read location is starting block */
 	int start_write_loc = get_starting_block_write_location(offset);
 	int block_num = 0, k;
 	struct fs7600_inode *inode = NULL;
 	inode = get_inode_from_inum(inode_num);
-	printf("\n DEBUG : Size = %d", inode->size);
 	/* get the block number to start */
 	block_num = get_blocknum_from_blkindex(block_index, inode_num);
 	/* read the first block */
@@ -1705,43 +1773,48 @@ int read_bytes_from_disk(int inode_num, char *buf,
 		if ((i % FS_BLOCK_SIZE) == 0) /* 1 page size data is ready */
 		{
 			/* write local_buf to disk */			
-			
 			block_index++;
-			
 			/* clear the local buf */
 			for (k = 0; k < FS_BLOCK_SIZE; k++)
 				local_buf[k] = '\0';
-				
 			/* get the next block num to write to */
 			block_num = get_blocknum_from_blkindex(block_index, inode_num);
-			
 			if (disk->ops->read(disk, block_num, 1, local_buf) < 0)
 				exit(1);
-				
 			i = 0; /* reset the index to 0 */
-			
 		}
 	}
 	buf[j] = '\0';
 	return len;
 }
 
+/*
+ * get_starting_block_index : onn_t -> int
+ * Returns the starting index of block based on offest.
+ * */
 int get_starting_block_index(off_t offset) {
 	int start_index = (int)offset / FS_BLOCK_SIZE;
 	return start_index;
 }
 
+/*
+ * get_starting_block_write_location : off_t -> int
+ * Returns the starting index in start block to start read/write.
+ * */
 int get_starting_block_write_location(off_t offset) {
 	int start_location = (int)offset % FS_BLOCK_SIZE;
 	return start_location;
 }
 
-/* get_level_index_for_blk : int, char* -> int
- * Returns the relative index and level for the exact level (direct, 
- * indir1 or indir2) for the given blkindex */
-int get_level_index_for_blk(int blkindex, char* level, int inum, int* blknm) {
+/*
+ * get_blocknum_from_blkindex : int, int -> int
+ * Returns the next block number to read/write based on the 
+ * blkindex.
+ * */
+int get_blocknum_from_blkindex(int blkindex, int inum) {
 	struct fs7600_inode *inode = NULL;
 	int direct_count = 6;
+	char level[2] = {'\0'};
 	int indir_1_count = 256;
 	int indir_2_count = (256 * 256);
 	int rel_index, level_block_num_to_allocate = 0, rel_2_index;
@@ -1761,7 +1834,8 @@ int get_level_index_for_blk(int blkindex, char* level, int inum, int* blknm) {
 		/* read the array of 256 entries if block for 
 		 * indir1 is already allocated */
 		if (inode->indir_1 > 0) {
-			if (disk->ops->read(disk, inode->indir_1, 1, &indir1blocks) < 0)
+			if (disk->ops->read(disk, inode->indir_1, 1, 
+						&indir1blocks) < 0)
 				exit(1);
 		}
 		else {
@@ -1782,7 +1856,8 @@ int get_level_index_for_blk(int blkindex, char* level, int inum, int* blknm) {
 		level[0] = '2';
 		if (inode->indir_2 > 0) {
 			/* already allocated indir2 */
-			if (disk->ops->read(disk, inode->indir_2, 1, &indir2blocks) < 0)
+			if (disk->ops->read(disk, inode->indir_2, 1,
+								&indir2blocks) < 0)
 				exit(1);
 		}
 		else {
@@ -1855,23 +1930,15 @@ int get_level_index_for_blk(int blkindex, char* level, int inum, int* blknm) {
 		}
 	}
 	write_block_to_inode_region(inum);
-	*blknm = block_num;
-	return rel_index;
-}
-
-int get_blocknum_from_blkindex(int blkindex, int inum) {
-	int block_num;
-	struct fs7600_inode *inode = NULL;
-	char level[2] = {'\0'};
-	int rel_index = get_level_index_for_blk(blkindex, level, 
-				inum, &block_num);
 	return block_num;
 }
 
-/* write_bytes_to_disk : int, char*, size_t, off_t -> int 
+/* 
+ * write_bytes_to_disk : int, char*, size_t, off_t -> int 
  * Writes the data in buf of size len, from offset to file with 
  * inode* as given. 
- * Returns the number of bytes written to disk */
+ * Returns the number of bytes written to disk 
+ * */
 int write_bytes_to_disk(int inode_num, 
 			const char *buf, size_t len, off_t offset) {
 	/* starting block index to start writing in file */
@@ -1894,7 +1961,7 @@ int write_bytes_to_disk(int inode_num,
 	/* filling local buf from buf and writing to disk */
 	i = start_write_loc; /* the index of local buf */
 	j = 0; /* the index of buf */
-	while (j < len/*strlen(buf)*/) {
+	while (j < len) {
 		local_buf[i] = buf[j];
 		j++;
 		i++;
@@ -1920,7 +1987,6 @@ int write_bytes_to_disk(int inode_num,
 	/* write the last block to disk */
 	if (disk->ops->write(disk, block_num, 1, last_buf) < 0)
 		exit(1);
-	
 	/* update the size of file */
 	inode->size += len;
 	/* write the inode */
@@ -1928,7 +1994,8 @@ int write_bytes_to_disk(int inode_num,
 	return len;
 }
 
-/* write - write data to a file
+/* 
+ * write - write data to a file
  * It should return exactly the number of bytes requested, except on
  * error.
  * Errors - path resolution, ENOENT, EISDIR
@@ -1965,28 +2032,13 @@ static int fs_write(const char *path, const char *buf, size_t len,
 	return bytes_written;
 }
 
-
-/* Update block with buf : Com=nsumes a block number and a char* buf 
- * and updates teh block with that buffer
- */
-int update_Block_Wid_Buf(struct fs7600_inode *inode, int inodenum, 
-				int blocknum, char* buf) {
-	char blkbuf[1024];
-	strcpy(blkbuf, "");
-	strcat(blkbuf, buf);
-	if (disk->ops->write(disk, blocknum, 1, blkbuf) < 0) 
-			exit(1);
-	if(write_block_to_inode_region(inodenum) < 0)
-				exit(1);
-	return SUCCESS;
-}
-
-
-
 //---------------------------------------------------------------------
+/*
+ * fs_open : char*, fuse_file_info -> int
+ * implements path traslation cache.
+ * */
 static int fs_open(const char *path, struct fuse_file_info *fi)
 {
-	//printf("\n DEBUG : fs_open function called ");fflush(stdout);
 	/* for part > 1 of homework, with path caching */
 	if (homework_part > 1) {
 		int inode_number = -1;
@@ -2017,12 +2069,13 @@ static int fs_open(const char *path, struct fuse_file_info *fi)
 
 static int fs_release(const char *path, struct fuse_file_info *fi)
 {
-	//printf("\n DEBUG : fs_release function called ");fflush(stdout);
     return 0;
 }
 
-/* get_free_block_count : int -> int
- * Returns the number of blocks which are free in the file system */
+/* 
+ * get_free_block_count : int -> int
+ * Returns the number of blocks which are free in the file system 
+ * */
 int get_free_block_count(int start_block) {
 	int block_count = sizeof(*block_map);
 	int free_count = 0;
@@ -2037,7 +2090,8 @@ int get_free_block_count(int start_block) {
 	return free_count;
 }
 
-/* statfs - get file system statistics
+/* 
+ * statfs - get file system statistics
  * see 'man 2 statfs' for description of 'struct statvfs'.
  * Errors - none. 
  */
@@ -2055,7 +2109,6 @@ static int fs_statfs(const char *path, struct statvfs *st)
      */
     int data_blocks_start_block_number = 
 		get_inodes_region_starting_block() + sb.inode_region_sz;
-    //printf("\n DEBUG : fs_statfs function called ");fflush(stdout);
     st->f_bsize = FS_BLOCK_SIZE;
     /* to get value of f_blocks = total image - metadata */
     st->f_blocks = sb.num_blocks - data_blocks_start_block_number + 1;
@@ -2067,7 +2120,8 @@ static int fs_statfs(const char *path, struct statvfs *st)
     return SUCCESS;
 }
 
-/* operations vector. Please don't rename it, as the skeleton code in
+/* 
+ * operations vector. Please don't rename it, as the skeleton code in
  * misc.c assumes it is named 'fs_ops'.
  */
 struct fuse_operations fs_ops = {
