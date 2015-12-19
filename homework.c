@@ -20,21 +20,24 @@
 #include "fs7600.h"
 #include "blkdev.h"
 
-#define TRUE 1
-#define FALSE 0
-#define SUCCESS 0
-#define IS_DIR 1
-#define IS_FILE 0
-#define PATH_CACHE_SIZE 20
-#define DIR_ENTRY_CACHE_SIZE 50
-#define WRITE_BK_CLN_CACHE_SIZE 30
-#define WRITE_BK_DRTY_CACHE_SIZE 10
+/* required constants */
+#define TRUE 1  		/* true */
+#define FALSE 0			/* false */
+#define SUCCESS 0		/* return value for success case */
+#define IS_DIR 1		/* to indicate directory */
+#define IS_FILE 0		/* to indicate regular file */
+#define PATH_CACHE_SIZE 50			/* size of path cache */
+#define DIR_ENTRY_CACHE_SIZE 50  	/* size of directory cache */
+#define WRITE_BK_CLN_CACHE_SIZE 30	/* size of write back clean cache */
+#define WRITE_BK_DRTY_CACHE_SIZE 10 /* size of write back dirty cache */
 
 
 int* getListOfBlocksOperate(struct fs7600_inode *inode, int len, 
 				off_t offset, int *numOfBlocksToread);
-int current_access_count = 0;  /* for LRU in path_cache */
-int directory_entry_cache_access = 0; 
+				
+/* global variables */
+int path_cache_access_time = 0;  			/* for LRU in path_cache */
+int dir_cache_access_time = 0; 
 /* for LRU in directory entry cache */
 int wrt_bck_cache_access_time = 0;  /* for LRU impl for 
 										write back cache */
@@ -535,7 +538,7 @@ int fetch_entry_from_dir_entry_cache(int dir_inum,
 			child_inode_number = dir_entry_cache_list[i].child_inum;
 			/* increse the access time for LRU implementation */
 			dir_entry_cache_list[i].last_access_time = 
-								++directory_entry_cache_access;
+								++dir_cache_access_time;
 			*ftype = dir_entry_cache_list[i].ftype;
 			break;
 		}
@@ -563,7 +566,7 @@ int replace_dir_cache_entry(int dir_inum, char* name,
 	dir_entry_cache_list[entry].ftype = ftype;
 	/* save the incremented access time */
 	dir_entry_cache_list[entry].last_access_time = 
-							++directory_entry_cache_access;
+							++dir_cache_access_time;
 	return SUCCESS;
 }
 
@@ -635,7 +638,7 @@ int fetch_entry_from_path_cache(const char* path) {
 			/* path found in cache */
 			inode_number = path_cache_list[i].inum;
 			/* increse the access time for LRU implementation */
-			path_cache_list[i].last_access_time = ++current_access_count;
+			path_cache_list[i].last_access_time = ++path_cache_access_time;
 			break;
 		}
 	}
@@ -657,7 +660,7 @@ int replace_cache_entry(const char* path, int inum, int entry) {
 	/* store the inode number */
 	path_cache_list[entry].inum = inum;
 	/* save the incremented access time */
-	path_cache_list[entry].last_access_time = ++current_access_count;
+	path_cache_list[entry].last_access_time = ++path_cache_access_time;
 	return SUCCESS;
 }
 
