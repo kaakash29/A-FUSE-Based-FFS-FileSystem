@@ -166,7 +166,8 @@ int fetch_entry_from_dirty_wrt_bck_cache(int blknum) {
 	return cache_entry;
 }
 
-int add_entry_to_dirty_wrt_bck_cache(int blknum, char* buf) {
+int add_entry_to_dirty_wrt_bck_cache(struct blkdev *old_dev, 
+									int blknum, char* buf) {
 	/* check for free entry in cache, if found, then put
 	 * entry in that position
 	 * if not there, then replace the entry with least
@@ -188,7 +189,8 @@ int add_entry_to_dirty_wrt_bck_cache(int blknum, char* buf) {
 	}
 	/* found the index to replace by LRU */
 	/* put the entry */
-	replace_dirty_wrt_bck_cache_entry(blknum, buf, index_to_replace);
+	replace_dirty_wrt_bck_cache_entry(old_dev, 
+							blknum, buf, index_to_replace);
 	/*print_dir_entry_cache();*/
 	return SUCCESS;
 }
@@ -196,12 +198,13 @@ int add_entry_to_dirty_wrt_bck_cache(int blknum, char* buf) {
 /* replace_dirty_wrt_bck_cache_entry : int, char*, int -> int
  * Replaces the entry in write_bk_drty_cache at index entry with
  * blknum and buf */
-int replace_dirty_wrt_bck_cache_entry(int blknum, char* buf, int entry) {
+int replace_dirty_wrt_bck_cache_entry(struct blkdev *old_dev, 
+							int blknum, char* buf, int entry) {
 	/* mark the entry as valid */
 	if (write_bk_drty_cache[entry].valid == 1) {
 		/* need to write to disk, as replacing a dirty page which
 		 * is a valid one */
-		 if (disk->ops->write(disk, write_bk_drty_cache[entry].block_num, 
+		 if (old_dev->ops->write(old_dev, write_bk_drty_cache[entry].block_num, 
 					1, write_bk_drty_cache[entry].block) < 0)
 				/* error on write */
 				exit(1);
@@ -221,7 +224,7 @@ int replace_dirty_wrt_bck_cache_entry(int blknum, char* buf, int entry) {
 	return SUCCESS;
 }
 
-
+char local_whole_buf[(FS_BLOCK_SIZE * FS_BLOCK_SIZE) + 1];
 /*
  * cache - you'll need to create a blkdev which "wraps" this one
  * and performs LRU caching with write-back.
@@ -231,13 +234,81 @@ int cache_nops(struct blkdev *dev)
     struct blkdev *d = dev->private;
     return d->ops->num_blocks(d);
 }
+
 int cache_read(struct blkdev *dev, int first, int n, void *buf)
 {
+	int block_num = first, i, k, j = 0;
+	int entry_in_cache = -1;
+	struct blkdev *old_dev = dev->private;
 	
+	/* first try to get from clean cache */
+	entry_in_cache = fetch_entry_from_clean_wrt_bck_cache(block_num);
+	if (entry_in_cache < 0)
+	{
+		/* try to get from dirty cache */
+		entry_in_cache = fetch_entry_from_dirty_wrt_bck_cache(block_num);
+		if (entry_in_cache >= 0) {
+			/* entry found in dirty write back cache */
+			memcpy(buf, 
+			write_bk_drty_cache[entry_in_cache].block, FS_BLOCK_SIZE);
+		}
+	}
+	else {
+		/* entry found in clean write back cache */
+		memcpy(buf, write_bk_cln_cache[entry_in_cache].block, 
+											FS_BLOCK_SIZE);
+	}
+	/* if not found, then fetch from disk and add to clean cache */
+	if (entry_in_cache < 0)
+	{
+		/* fetch from disk */
+		if (old_dev->ops->read(old_dev, block_num, 1, buf) < 0) {
+			/* error on write */
+			exit(1);
+		}
+		/* add to clean cache */
+		add_entry_to_clean_wrt_bck_cache(block_num, buf);	
+	}
     return SUCCESS;
 }
+
 int cache_write(struct blkdev *dev, int first, int n, void *buf)
 {
+    int block_num = first, i, k, j = 0;
+	int entry_in_cache = -1;
+	struct blkdev *old_dev = dev->private;
+	
+	/* first try to get from dirty cache */
+	entry_in_cache = fetch_entry_from_dirty_wrt_bck_cache(block_num);
+	if (entry_in_cache < 0)
+	{
+		/* try to get from clean cache */
+		entry_in_cache = fetch_entry_from_clean_wrt_bck_cache(block_num);
+		if (entry_in_cache >= 0) {
+			/* entry found in clean write back cache */
+			/* invalidate the clean cache page, 
+			 * to be moved to dirty cache */
+			write_bk_cln_cache[entry_in_cache].valid = 0;
+			/* add the clean page to the dirty page */
+			add_entry_to_dirty_wrt_bck_cache(old_dev, block_num, buf);
+		}
+	}
+	else {
+		/* entry found in dirty write back cache */
+		memcpy(write_bk_drty_cache[entry_in_cache].block, buf,  
+											FS_BLOCK_SIZE);
+	}
+	/* if not found, then fetch from disk and add to dirty cache */
+	if (entry_in_cache < 0)
+	{
+		/* write from disk */
+		if (old_dev->ops->write(old_dev, block_num, 1, buf) < 0) {
+			/* error on write */
+			exit(1);
+		}
+		/* add to dirty cache */
+		add_entry_to_dirty_wrt_bck_cache(old_dev, block_num, buf);	
+	}
     return SUCCESS;
 }
 struct blkdev_ops cache_ops = {
@@ -595,7 +666,7 @@ int replace_cache_entry(const char* path, int inum, int entry) {
 	path_cache_list[entry].valid = 1;
 	/* copy the path to the cache */
 	path_cache_list[entry].path = (char*) malloc 
-									(sizeof(char) * strlen(path));
+									(sizeof(char) * (strlen(path) + 1));
 	strcpy(path_cache_list[entry].path, path);
 	strcat(path_cache_list[entry].path, "\0");
 	/* store the inode number */
@@ -1199,6 +1270,10 @@ static int fs_unlink(const char *path)
 	struct fs7600_inode *inode = NULL;
 	
 	inum  = fs_translate_path_to_inum(path, &type);
+	if (inum < 0) {
+		/* error */
+		return inum;
+	}
 	
 	if (type == IS_DIR)
 			return -EISDIR;
