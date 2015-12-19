@@ -20,6 +20,8 @@
 #include "fs7600.h"
 #include "blkdev.h"
 
+#define TRUE 1
+#define FALSE 0
 #define SUCCESS 0
 #define IS_DIR 1
 #define IS_FILE 0
@@ -518,23 +520,6 @@ char* remove_last_token(const char *path, char** last_token) {
 	return return_string;
 }
 
-int print_dir_entry_cache() {
-	int i;
-	printf("\n DEBUG : PRINTING DIR ENTRY CACHE\n");
-	for (i = 0; i < DIR_ENTRY_CACHE_SIZE; i++) {
-		if (dir_entry_cache_list[i].valid == 1) {
-			printf("\nCache entry: %d -- parent_inum = %d, Name = %s, \
-			child_inum = %d, valid = %d, last_access_time = %d", 
-			i, dir_entry_cache_list[i].parent_inum, 
-			dir_entry_cache_list[i].child_name, 
-			dir_entry_cache_list[i].child_inum, 
-			dir_entry_cache_list[i].valid, 
-			dir_entry_cache_list[i].last_access_time);
-		}
-	}
-	printf("\n DEBUG : PRINTING DIR ENTRY CACHE --- DONE!!!!!---- \n");
-}
-
 /* fetch_entry_from_dir_entry_cache : int, char*, int* -> int
  * Returns the mapped child inode number in cache for the directory 
  * entry of dir_inum for name if exists, else returns -1. */
@@ -674,20 +659,6 @@ int replace_cache_entry(const char* path, int inum, int entry) {
 	/* save the incremented access time */
 	path_cache_list[entry].last_access_time = ++current_access_count;
 	return SUCCESS;
-}
-
-int print_path_cache() {
-	int i;
-	printf("\n DEBUG : PRINTING CACHE\n");
-	for (i = 0; i < PATH_CACHE_SIZE; i++) {
-		if (path_cache_list[i].valid == 1) {
-			printf("\nCache entry: %d -- Path = %s, inum = %d, \
-			 valid = %d, last_access_time = %d", 
-			i, path_cache_list[i].path, path_cache_list[i].inum, 
-			path_cache_list[i].valid, 
-			path_cache_list[i].last_access_time);
-		}
-	}
 }
 
 /* add_path_to_cache : char*, int -> int
@@ -1650,37 +1621,6 @@ int* getListOfBlocksOperate(struct fs7600_inode *inode, int len,
 	return readBlocksList;
 }
 
-
-int read_Data_From_File_Inode(struct fs7600_inode *inode, int len, 
-						off_t offset, char* buf) 
-{
-		char* buffer = NULL;
-		int* readBlocksList = NULL;
-		int numBlocks2Read = 0;
-		int sizeInBlock01, i;
-		readBlocksList = getListOfBlocksOperate(inode, len, 
-					offset, &numBlocks2Read);
-		sizeInBlock01 = (offset % FS_BLOCK_SIZE);
-		// Allocate memory to dynamic buffer and blocks list
-		buffer = (char*)malloc((FS_BLOCK_SIZE * numBlocks2Read + 1) * 
-										sizeof(char));
-	    strcpy(buffer,"");
-		// Filling the character buffer
-		for (i = 0; i < numBlocks2Read ; i++)
-		{
-		
-			char tempbuf[1024];
-			if (disk->ops->read(disk, *(readBlocksList++), 1, 
-								&tempbuf) < 0)
-				exit(1);
-			strcat(buffer, tempbuf);
-		}			
-		strncpy(buf, buffer + offset , (len - sizeInBlock01));
-		free(buffer);
-		return SUCCESS;	
-}
-
-int traverse_inode_to_read (int len, off_t offset, struct fs7600_inode *inode, char *buf);
 /* read - read data from an open file.
  * should return exactly the number of bytes requested, except:
  *   - if offset >= file len, return 0
@@ -1781,188 +1721,6 @@ int read_bytes_from_disk(int inode_num, char *buf,
 	}
 	buf[j] = '\0';
 	return len;
-}
-
-
-int traverse_inode_to_read (int len, off_t offset, struct fs7600_inode *inode, char* buf)
-{
-	
-	int startingINdex = 0;
-	char* backupbuf;
-	int startingIndex = 0;
-	int current_index = 0;
-	int offset_in_block = 0;
-	int bytes_to_read = len;
-	int buffersize = 0;
-	int numOfBlocksReqd = 0;
-	int indirect1[256] = {0};
-	int indirect2[256] = {0};
-	int i, j;
-	
-	startingIndex = (int)offset/FS_BLOCK_SIZE;
-	//printf("\n DEBUG : The starting index to start traversal is = ..%d, ",startingIndex);
-	
-	offset_in_block = offset % FS_BLOCK_SIZE;
-	//printf("\n DEBUG : offset from the starting block = %d", offset_in_block);
-	
-	numOfBlocksReqd = buffersize = (int)((len - offset_in_block)/FS_BLOCK_SIZE) + 1;
-	
-	//printf("\n DEBUG : Number of Blocks Required = %d",numOfBlocksReqd);
-		
-	backupbuf = buf ; 	// We are increasing the pointer in the code so
-						// keeping a backup of original pointer
-						
-	// buffersize is also the number of block required to read the buffer
-	if(inode == NULL) {
-		//printf("NULL inode received ");
-		return 0;
-	}
-	
-	//Start inode traversal
-	for (i =0 ; i < N_DIRECT; i++)
-	{
-		char tempbuf[1024];
-		strcpy(tempbuf, "");
-		
-		
-		if ((current_index >= startingIndex) && 
-			(numOfBlocksReqd != 0))
-		{
-			/*printf(" \n CurrentIndex is grater than the statingIndex ");
-			printf(" \n Still more blocks are required to be read ");
-			
-			printf("\n DEBUG : Reading the Block NUmber = %d", inode->direct[i]);*/
-			if(disk->ops->read(disk, inode->direct[i], 1, &tempbuf) < 0)
-				exit(1);
-			
-			//printf("\n tempbuf read = %s",tempbuf);
-			
-			buf = buf + (FS_BLOCK_SIZE * current_index);	
-			strncpy(buf, tempbuf, FS_BLOCK_SIZE);
-			
-			//printf("\n BUffer after copying the temopbuf in it is %s",buf);
-			
-			numOfBlocksReqd = numOfBlocksReqd - 1;
-		}
-		else 
-		{
-			return SUCCESS;
-		}
-		
-		current_index = current_index + 1;
-	}
-	
-	//Start indirect node traversal
-	if(disk->ops->read(disk, inode->indir_1, 1 , indirect1) < 0)
-		exit(1);
-	
-	for(i = 0; i < 256; i++) 
-	{
-		char tempbuf[1024];
-		strcpy(tempbuf, "");
-		
-		if ((current_index >= startingIndex) && 
-			(numOfBlocksReqd != 0))
-		{
-			/*printf(" \n CurrentIndex is grater than the statingIndex ");
-			printf(" \n Still more blocks are required to be read in Indirect block 2");
-			
-			printf("\n DEBUG : Reading the Block NUmber = %d", indirect1[i]);*/
-			if(disk->ops->read(disk, indirect1[i], 1, &tempbuf) < 0)
-				exit(1);
-			
-			buf = buf + (FS_BLOCK_SIZE * current_index);	
-			strncpy(buf, tempbuf, FS_BLOCK_SIZE);
-			
-			
-			numOfBlocksReqd = numOfBlocksReqd - 1;
-		}
-		else 
-		{
-			return SUCCESS;
-		}
-		current_index = current_index + 1;	
-	}
-	
-	
-	//Start Second indirect node traversal 
-	if(disk->ops->read(disk, inode->indir_2, 1 , indirect1) < 0)
-		exit(1);
-	
-	for(i = 0; i < 256; i++) 
-	{
-		if(disk->ops->read(disk, indirect1[i], 1 , indirect2) < 0)
-			exit(1);
-			
-		for(j =0; j < 256; j++)
-		{
-			char tempbuf[1024];
-			strcpy(tempbuf, "");
-			
-			if ((current_index >= startingIndex) && 
-				(numOfBlocksReqd != 0))
-			{
-				printf(" \n CurrentIndex is grater than the statingIndex ");
-				printf(" \n Still more blocks are required to be read in Indirect block 2");
-				printf(" \n DEBUG : Reading the Block NUmber = %d", indirect2[j]);
-				if(disk->ops->read(disk, indirect2[j], 1, &tempbuf) < 0)
-					exit(1);
-					
-				buf = buf + (FS_BLOCK_SIZE * current_index);	
-				strncpy(buf, tempbuf, FS_BLOCK_SIZE);
-			
-				numOfBlocksReqd = numOfBlocksReqd - 1;
-			}
-			else 
-			{
-				return SUCCESS;
-			}
-			
-			current_index = current_index + 1;
-		}
-	}
-	
-*(buf++) = '\0';
-return SUCCESS;
-}
-
-#define TRUE 1
-#define FALSE 0
-
-void printInode(int inodenum) {
-	
-	struct fs7600_inode *inode = NULL;
-	int indir1blocks[256];
-	int indir2blocks[256];
-	int i;
-	printf("\n DEBUG : Printing the inode number = %d",inodenum);
-	inode = get_inode_from_inum(inodenum);
-	if (inode != NULL) {
-			printf("\n DEBUG : Size = %d", inode->size);
-			printf("\n DIRECT BLOCK NUMBERS = ");
-			for(i = 0 ; i < 6; i++) {
-				printf("%d \t",inode->direct[i]);
-			}		
-			printf("\n INDIRECT BLOCK NUMBERS = ");
-			if (disk->ops->read(disk, inode->indir_1, 1, 
-							&indir1blocks) < 0)
-					exit(1);
-			for(i = 0; i < 256; i++) {
-				printf("%d \t",indir1blocks[i]);
-			}
-			printf("\n INDIRECT 2 BLOCK NUMBERS = ");
-			if (disk->ops->read(disk, inode->indir_2, 1, 
-							&indir1blocks) < 0)
-					exit(1);
-			for(i = 0; i < 256; i++) {
-					if (disk->ops->read(disk, indir1blocks[i], 1, 
-							&indir2blocks) < 0)
-						exit(1);
-					for(i = 0 ; i < 6; i++) {
-							printf("%d \t",indir2blocks[i]);
-					}
-			}	
-	}
 }
 
 int get_starting_block_index(off_t offset) {
